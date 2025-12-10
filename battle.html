@@ -2,34 +2,34 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Soul Hunters: Desync Update</title>
+    <title>Soul Hunters: Slow Paced Battle</title>
     <style>
-        body { margin: 0; background: #111; overflow: hidden; font-family: 'Segoe UI', sans-serif; user-select: none; }
-        #game-stage { position: relative; width: 100vw; height: 100vh; background: #2b3e50; }
-        canvas { display: block; image-rendering: pixelated; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        #game-stage { position: relative; width: 100vw; height: 100vh; }
+        canvas { display: block; image-rendering: pixelated; width: 100%; height: 100%; }
 
-        #ui-layer { position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 10; }
-        button { background: #444; color: white; border: 1px solid #666; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 14px; transition: 0.2s; }
-        button:hover { background: #666; }
-        button.active { background: #0f0; color: black; border-color: #0f0; }
-
-        #loading { position: absolute; top: 50%; width: 100%; text-align: center; color: white; pointer-events: none; }
-
-        #settlement-modal {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            opacity: 0; pointer-events: none; transition: opacity 0.5s; z-index: 100;
-        }
+        /* HUD & UI */
+        #top-hud { position: absolute; top: 0; left: 0; width: 100%; height: 80px; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); display: flex; justify-content: center; align-items: center; color: white; pointer-events: none; z-index: 10; }
+        .timer-box { font-size: 32px; font-weight: bold; color: #ffd700; text-shadow: 0 0 10px orange; border: 2px solid #555; padding: 5px 20px; border-radius: 5px; background: rgba(0,0,0,0.5); }
+        #hero-dock { position: absolute; bottom: 0; left: 0; width: 100%; height: 130px; background: linear-gradient(to top, rgba(0,0,0,0.9) 60%, transparent); display: flex; justify-content: center; align-items: center; gap: 15px; padding-bottom: 10px; z-index: 10; }
+        .hero-card { width: 80px; height: 80px; border: 3px solid #444; border-radius: 8px; background: #222; position: relative; cursor: pointer; transition: transform 0.1s; overflow: hidden; pointer-events: auto; }
+        .hero-card.ready { border-color: #ffd700; box-shadow: 0 0 15px #ffd700, inset 0 0 10px #ffd700; animation: pulse 1s infinite alternate; }
+        .hero-card.ready:active { transform: scale(0.9); }
+        .card-face { width: 100%; height: 100%; background-size: cover; background-position: center top; filter: grayscale(100%); opacity: 0.7; transition: 0.3s; }
+        .hero-card.ready .card-face { filter: grayscale(0%); opacity: 1; }
+        .mp-bar { position: absolute; bottom: 0; left: 0; width: 100%; height: 8px; background: #333; }
+        .mp-fill { height: 100%; width: 0%; background: #ffd700; transition: width 0.1s linear; }
+        .hp-bar-mini { position: absolute; bottom: 8px; left: 0; width: 100%; height: 4px; background: #000; }
+        .hp-fill-mini { height: 100%; width: 100%; background: #0f0; transition: width 0.2s; }
+        .hero-card.dead { filter: grayscale(100%) brightness(0.3); pointer-events: none; border-color: #333; }
+        @keyframes pulse { from { box-shadow: 0 0 10px #ffd700; } to { box-shadow: 0 0 25px orange; } }
+        #settlement-modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; opacity: 0; pointer-events: none; transition: opacity 0.5s; z-index: 100; }
         #settlement-modal.show { opacity: 1; pointer-events: auto; }
         .result-title { font-size: 80px; font-weight: bold; margin-bottom: 20px; letter-spacing: 5px; text-shadow: 0 0 20px rgba(0,0,0,0.5); }
         .win { color: #ffd700; text-shadow: 0 0 30px #ffd700; }
         .lose { color: #cc3333; text-shadow: 0 0 30px #cc3333; }
-        .restart-btn {
-            padding: 15px 50px; font-size: 24px; background: white; color: black; border: none;
-            border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 0 20px rgba(255,255,255,0.3);
-        }
-        .restart-btn:hover { transform: scale(1.05); }
+        .restart-btn { padding: 15px 50px; font-size: 24px; background: white; color: black; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 0 20px rgba(255,255,255,0.3); }
+        #loading { position: absolute; top: 50%; width: 100%; text-align: center; color: white; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -37,9 +37,8 @@
 <div id="game-stage">
     <canvas id="canvas"></canvas>
     <div id="loading">资源加载中...</div>
-    <!-- <div id="ui-layer">
-        <button id="btn-debug" onclick="toggleDebug()">🔳 Debug</button>
-    </div> -->
+    <div id="top-hud"><div class="timer-box" id="game-timer">01:30</div></div>
+    <div id="hero-dock"></div>
     <div id="settlement-modal">
         <div id="result-text" class="result-title">VICTORY</div>
         <button class="restart-btn" onclick="location.reload()">PLAY AGAIN</button>
@@ -48,42 +47,43 @@
 
 <script>
     /**
-     * 引擎 V11: 动作去同步化 (Desync Animation)
+     * 引擎 V22: 慢节奏调整 (Slower Paced)
      */
 
-    let DEBUG_MODE = false;
     let IS_GAME_OVER = false;
 
-    function toggleDebug() {
-        DEBUG_MODE = !DEBUG_MODE;
-        const btn = document.getElementById('btn-debug');
-        if(DEBUG_MODE) btn.classList.add('active'); else btn.classList.remove('active');
-    }
-
-    // --- 资源配置 ---
+    // --- 🌟 资源配置 ---
     const ASSETS_CONFIG = {
+        'BG': { src: 'bg.png' },
         'WARRIOR': {
             collider: { width: 40, height: 60 }, anchorY: 50,
+            head: { src: 'warrior/Head.png' },
             actions: {
-                'IDLE':   { src: 'warrior/Idle.png',      frames: 8, loop: true },
-                'MOVE':   { src: 'warrior/Run.png',       frames: 8, loop: true },
-                'ATTACK': { src: 'warrior/Attack1.png',   frames: 4, loop: true, damageFrame: 0.6 },
-                'DEAD':   { src: 'warrior/Death.png',     frames: 6, loop: false },
-                'HIT':    { src: 'warrior/Take Hit.png',  frames: 4, loop: false }
+                // 🔥 动画速度稍微放慢 (0.1 -> 0.12)
+                'IDLE':   { src: 'warrior/Idle.png',      frames: 8, loop: true, speed: 0.12 },
+                'MOVE':   { src: 'warrior/Run.png',       frames: 8, loop: true, speed: 0.12 },
+                'ATTACK': { src: 'warrior/Attack1.png',   frames: 4, loop: true, damageFrame: 0.6, speed: 0.15 },
+                'DEAD':   { src: 'warrior/Death.png',     frames: 6, loop: false, speed: 0.12 },
+                'HIT':    { src: 'warrior/Take Hit.png',  frames: 4, loop: false, speed: 0.12 }
             }
         },
         'ARCHER': {
             collider: { width: 30, height: 70 }, anchorY: 25,
+            head: { src: 'archer/Head.png' },
             actions: {
-                'IDLE':   { src: 'archer/Idle.png',      frames: 10, loop: true },
-                'MOVE':   { src: 'archer/Run.png',       frames: 8, loop: true },
-                'ATTACK': { src: 'archer/Attack1.png',   frames: 6, loop: true, damageFrame: 0.6 },
-                'DEAD':   { src: 'archer/Death.png',     frames: 10, loop: false },
-                'HIT':    { src: 'archer/Take Hit.png',  frames: 3, loop: false }
+                'IDLE':   { src: 'archer/Idle.png',      frames: 10, loop: true, speed: 0.12 },
+                'MOVE':   { src: 'archer/Run.png',       frames: 8, loop: true, speed: 0.12 },
+                'ATTACK': { src: 'archer/Attack1.png',   frames: 6, loop: true, damageFrame: 0.6, speed: 0.15 },
+                'DEAD':   { src: 'archer/Death.png',     frames: 10, loop: false, speed: 0.12 },
+                'HIT':    { src: 'archer/Take Hit.png',  frames: 3, loop: false, speed: 0.12 }
             }
         },
         'FX': {
-            'ARROW':  { src: 'archer/arrow/Move.png', frames: 2, speed: 0.1, collider: { width: 30, height: 10 } }
+            // 🔥 子弹速度减慢 (400 -> 250)
+            'ARROW':  { src: 'arrow/Move.png', frames: 2, speed: 0.1, collider: { width: 30, height: 10 }, scale: 2.0 },
+            'ULT_ARROW': { src: 'arrow/Move.png', frames: 2, speed: 0.1, collider: { width: 60, height: 20 }, scale: 3.0 },
+            'EXPLOSION': { src: 'vfx/Explosion.png', frames: 24, speed: 0.05, scale: 3.0, row: 0, totalRows: 1, anchor: {x:0.5, y:0.5} },
+            'BUFF': { src: 'vfx/Buff.png', frames: 32, speed: 0.05, scale: 2.0, row: 0, totalRows: 1, anchor: {x:0.5, y:1.0}, offset: {x:0, y:35} }
         }
     };
 
@@ -94,116 +94,198 @@
     let units = [];
     let projectiles = [];
     let floatingTexts = [];
+    let visualEffects = [];
     let lastTime = 0;
+    let gameTime = 90.0;
+
+    class VisualEffect {
+        constructor(x, y, type) {
+            this.x = x; this.y = y;
+            this.config = ASSETS_CONFIG.FX[type];
+            this.frames = this.config.frames; this.speed = this.config.speed;
+            this.scale = this.config.scale || 1.0;
+            this.row = this.config.row || 0;
+            this.totalRows = this.config.totalRows || 1;
+            this.anchor = this.config.anchor || {x: 0.5, y: 0.5};
+            this.offset = this.config.offset || {x: 0, y: 0};
+            this.frameIndex = 0; this.timer = 0; this.finished = false;
+            this.img = imageCache[`FX_${type}`];
+        }
+        update(dt) {
+            this.timer += dt;
+            if (this.timer >= this.speed) {
+                this.timer = 0; this.frameIndex++;
+                if (this.frameIndex >= this.frames) this.finished = true;
+            }
+        }
+        draw(ctx) {
+            if (!this.img || this.finished) return;
+            let frameW = this.img.width / this.frames;
+            let frameH = this.img.height / this.totalRows;
+            let drawW = frameW * this.scale; let drawH = frameH * this.scale;
+            let sx = this.frameIndex * frameW; let sy = this.row * frameH;
+            let finalDx = (-drawW * this.anchor.x) + this.offset.x;
+            let finalDy = (-drawH * this.anchor.y) + this.offset.y;
+            ctx.save(); ctx.translate(this.x, this.y); ctx.globalCompositeOperation = 'screen';
+            try { ctx.drawImage(this.img, sx, sy, frameW, frameH, finalDx, finalDy, drawW, drawH); } catch(e) {}
+            ctx.restore();
+        }
+    }
+
+    function checkGameOver() {
+        if (IS_GAME_OVER) return;
+        let playersAlive = units.filter(u => u.isPlayer && u.hp > 0).length;
+        let enemiesAlive = units.filter(u => !u.isPlayer && u.hp > 0).length;
+        if (playersAlive === 0 || enemiesAlive === 0) {
+            IS_GAME_OVER = true;
+            let isWin = playersAlive > 0;
+            setTimeout(() => {
+                const modal = document.getElementById('settlement-modal');
+                const text = document.getElementById('result-text');
+                modal.classList.add('show');
+                text.innerText = isWin ? "VICTORY" : "DEFEAT";
+                text.className = isWin ? "result-title win" : "result-title lose";
+            }, 1500);
+        }
+    }
+
+    const UIManager = {
+        initHeroDock(players) {
+            const dock = document.getElementById('hero-dock');
+            dock.innerHTML = '';
+            players.forEach((unit) => {
+                let card = document.createElement('div');
+                card.className = 'hero-card';
+                card.id = `card-${unit.id}`;
+                let bgUrl = ASSETS_CONFIG[unit.roleType].head.src;
+                card.innerHTML = `
+                <div class="card-face" style="background-image: url('${bgUrl}'); background-size: 300%; background-position: center 20%;"></div>
+                <div class="hp-bar-mini"><div class="hp-fill-mini" id="hp-${unit.id}"></div></div>
+                <div class="mp-bar"><div class="mp-fill" id="mp-${unit.id}"></div></div>
+            `;
+                card.onclick = () => { if (unit.mp >= 100 && unit.state !== 'DEAD') unit.castUltimate(); };
+                dock.appendChild(card);
+                unit.uiCard = card;
+            });
+        },
+        update(dt) {
+            if (!IS_GAME_OVER && gameTime > 0) {
+                gameTime -= dt;
+                let secs = Math.ceil(gameTime);
+                let m = Math.floor(secs / 60); let s = secs % 60;
+                document.getElementById('game-timer').innerText = `0${m}:${s < 10 ? '0'+s : s}`;
+                if(gameTime <= 0) checkGameOver();
+            }
+            units.forEach(u => {
+                if (!u.isPlayer || !u.uiCard) return;
+                document.getElementById(`hp-${u.id}`).style.width = `${u.hp}%`;
+                document.getElementById(`mp-${u.id}`).style.width = `${u.mp}%`;
+                if (u.mp >= 100) u.uiCard.classList.add('ready'); else u.uiCard.classList.remove('ready');
+                if (u.state === 'DEAD') u.uiCard.classList.add('dead');
+            });
+        }
+    };
 
     function checkRectCollision(rect1, rect2) {
         return (rect1.x < rect2.x + rect2.w && rect1.x + rect1.w > rect2.x &&
             rect1.y < rect2.y + rect2.h && rect1.y + rect1.h > rect2.y);
     }
 
-    function calculateDamage(baseDmg) {
-        let variance = baseDmg * 0.1;
-        let finalDmg = baseDmg + (Math.random() * variance * 2 - variance);
-        let isCrit = Math.random() < 0.2;
-        if (isCrit) finalDmg *= 2;
-        return { dmg: Math.floor(finalDmg), isCrit: isCrit };
-    }
-
-    class FloatingText {
-        constructor(x, y, text, color, size) {
-            this.x = x; this.y = y; this.text = text; this.color = color; this.size = size;
-            this.life = 1.0; this.vy = -50;
-        }
-        update(dt) { this.y += this.vy * dt; this.life -= dt; }
-        draw(ctx) {
-            ctx.globalAlpha = Math.max(0, this.life);
-            ctx.fillStyle = this.color; ctx.strokeStyle = 'black'; ctx.lineWidth = 3;
-            ctx.font = `bold ${this.size}px Arial`; ctx.strokeText(this.text, this.x, this.y); ctx.fillText(this.text, this.x, this.y);
-            ctx.globalAlpha = 1.0;
-        }
-    }
-
     function loadAssets(callback) {
         let promises = [];
+        if (ASSETS_CONFIG.BG) {
+            promises.push(new Promise(r => { let i = new Image(); i.src = ASSETS_CONFIG.BG.src; i.onload=()=> {imageCache['BG']=i;r();}; i.onerror=r; }));
+        }
         for (let fx in ASSETS_CONFIG.FX) {
-            let p = new Promise(resolve => {
-                let img = new Image(); img.src = ASSETS_CONFIG.FX[fx].src;
-                img.onload = () => { imageCache[`FX_${fx}`] = img; resolve(); };
-                img.onerror = () => { resolve(); };
-            }); promises.push(p);
+            promises.push(new Promise(r => { let i = new Image(); i.src = ASSETS_CONFIG.FX[fx].src; i.onload=()=> {imageCache[`FX_${fx}`]=i;r();}; i.onerror=r; }));
         }
         for (let role in ASSETS_CONFIG) {
-            if (role === 'FX') continue;
+            if (role === 'FX' || role === 'BG') continue;
             for (let action in ASSETS_CONFIG[role].actions) {
                 let src = ASSETS_CONFIG[role].actions[action].src;
                 if (!imageCache[`${role}_${action}`]) {
-                    let p = new Promise(resolve => {
-                        let img = new Image(); img.src = src;
-                        img.onload = () => { imageCache[`${role}_${action}`] = img; resolve(); };
-                        img.onerror = () => { resolve(); };
-                    }); promises.push(p);
+                    promises.push(new Promise(r => { let i = new Image(); i.src = src; i.onload=()=> {imageCache[`${role}_${action}`]=i;r();}; i.onerror=r; }));
                 }
             }
         }
         Promise.all(promises).then(callback);
     }
 
+    class FloatingText {
+        constructor(x, y, text, color, size) {
+            this.x = x; this.y = y; this.text = text; this.color = color; this.size = size;
+            this.life = 1.0; this.vy = -30; // 🔥 飘字速度也减慢
+        }
+        update(dt) { this.y += this.vy * dt; this.life -= dt; }
+        draw(ctx) {
+            ctx.save(); ctx.shadowColor = "black"; ctx.shadowBlur = 2;
+            ctx.globalAlpha = Math.max(0, this.life);
+            ctx.fillStyle = this.color; ctx.font = `bold ${this.size}px Arial`;
+            ctx.fillText(this.text, this.x, this.y);
+            ctx.restore();
+        }
+    }
+
     class Projectile {
-        constructor(startX, startY, target, owner) {
+        constructor(startX, startY, target, owner, type = 'ARROW') {
             this.x = startX; this.y = startY; this.target = target; this.owner = owner;
-            this.speed = 400; this.baseDmg = 15; this.hit = false;
-            this.config = ASSETS_CONFIG.FX.ARROW;
+            this.hit = false; this.type = type;
+            this.config = ASSETS_CONFIG.FX[type];
+
+            // 🔥 投射物速度与伤害调整
+            if (type === 'ULT_ARROW') {
+                this.speed = 350; // 原600 -> 350
+                this.baseDmg = 40; // 原60 -> 40
+            } else {
+                this.speed = 250; // 原400 -> 250
+                this.baseDmg = 8; // 原15 -> 8
+            }
+
             this.collider = this.config.collider;
             this.frameIndex = 0; this.animTimer = 0;
             this.totalFrames = this.config.frames || 1;
             this.animSpeed = this.config.speed || 0.1;
-            let dx = target.x - startX;
-            let dy = (target.getHitBox().center.y) - startY;
+            this.scale = this.config.scale || 1.0;
+
+            let dx = target.x - startX; let dy = (target.getHitBox().center.y) - startY;
             this.angle = Math.atan2(dy, dx);
+            this.img = imageCache[`FX_${type}`];
         }
-        getHitBox() {
-            return { x: this.x - this.collider.width/2, y: this.y - this.collider.height/2, w: this.collider.width, h: this.collider.height };
-        }
+        getHitBox() { return { x: this.x - this.collider.width/2, y: this.y - this.collider.height/2, w: this.collider.width, h: this.collider.height }; }
         update(dt) {
             if (this.hit) return;
             this.animTimer += dt;
-            if (this.animTimer >= this.animSpeed) {
-                this.animTimer = 0; this.frameIndex = (this.frameIndex + 1) % this.totalFrames;
-            }
+            if (this.animTimer >= this.animSpeed) { this.animTimer = 0; this.frameIndex = (this.frameIndex + 1) % this.totalFrames; }
             this.x += Math.cos(this.angle) * this.speed * dt;
             this.y += Math.sin(this.angle) * this.speed * dt;
-
-            let arrowBox = this.getHitBox();
-            let targetBox = this.target.getHitBox().rect;
+            let arrowBox = this.getHitBox(); let targetBox = this.target.getHitBox().rect;
             if (checkRectCollision(arrowBox, targetBox) && this.target.state !== 'DEAD') {
                 this.hit = true;
-                let res = calculateDamage(this.baseDmg);
-                this.target.takeDamage(res.dmg, res.isCrit);
+                let isCrit = this.type === 'ULT_ARROW' ? true : Math.random() < 0.2;
+                let dmg = this.baseDmg * (isCrit ? 2 : 1);
+                this.target.takeDamage(dmg, isCrit);
+
+                if (this.type === 'ULT_ARROW') {
+                    let center = this.target.getHitBox().center;
+                    visualEffects.push(new VisualEffect(center.x, center.y, 'EXPLOSION'));
+                }
             }
         }
         draw(ctx) {
-            let img = imageCache['FX_ARROW'];
+            if (!this.img) return;
             ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle);
-            if (img) {
-                let frameW = img.width / this.totalFrames; let frameH = img.height;
-                try { ctx.drawImage(img, this.frameIndex * frameW, 0, frameW, frameH, -30, -10, 60, 20); } catch(e) {}
-            }
+            let frameW = this.img.width / this.totalFrames; let frameH = this.img.height;
+            let drawW = frameW * this.scale; let drawH = frameH * this.scale;
+            try { ctx.drawImage(this.img, this.frameIndex * frameW, 0, frameW, frameH, -drawW/2, -drawH/2, drawW, drawH); } catch(e) {}
             ctx.restore();
-            if (DEBUG_MODE) {
-                let box = this.getHitBox();
-                ctx.strokeStyle = '#ffff00'; ctx.lineWidth = 1; ctx.strokeRect(box.x, box.y, box.w, box.h);
-            }
         }
     }
 
     class SpriteAnimator {
         constructor(unit, roleType) {
             this.unit = unit; this.roleType = roleType;
-            this.currentAction = 'IDLE';
-            this.timer = 0;
-            this.defaultSpeed = 0.1;
-
-            // 🌟 优化1：随机起始帧 (0-3帧之间随机)，防止“阅兵步伐”
+            this.currentAction = 'IDLE'; this.timer = 0;
+            this.defaultSpeed = 0.12; // 🔥 默认动画速度变慢
             this.frameIndex = Math.floor(Math.random() * 4);
         }
         update(dt) {
@@ -213,8 +295,12 @@
             }
             let config = ASSETS_CONFIG[this.roleType].actions[this.currentAction];
             if (!config) return;
+
+            // 使用配置中的 speed，如果没有则用默认
+            let animSpeed = config.speed || this.defaultSpeed;
+
             this.timer += dt;
-            if (this.timer >= this.defaultSpeed) {
+            if (this.timer >= animSpeed) {
                 this.timer = 0;
                 if (config.loop === false) {
                     if (this.frameIndex < config.frames - 1) this.frameIndex++;
@@ -235,7 +321,9 @@
             let fix = actionCfg.offsetFix || [0, 0];
             let finalOffsetX = baseOffsetX + (isLeft ? -fix[0]*scale : fix[0]*scale);
             let finalOffsetY = baseOffsetY + fix[1]*scale;
+
             ctx.save(); ctx.translate(x, y); if (isLeft) ctx.scale(-1, 1);
+            if (this.unit.hitTimer > 0) ctx.globalCompositeOperation = "source-atop";
             ctx.drawImage(img, this.frameIndex * frameW, 0, frameW, frameH, finalOffsetX, finalOffsetY, frameW*scale, frameH*scale);
             ctx.restore();
             return true;
@@ -243,29 +331,26 @@
     }
 
     class Unit {
-        constructor(isPlayer, roleType, x, y) {
-            this.isPlayer = isPlayer; this.roleType = roleType;
-            this.x = x; this.y = y; this.hp = 100; this.state = 'IDLE';
-            this.target = null;
+        constructor(id, isPlayer, roleType, x, y) {
+            this.id = id; this.isPlayer = isPlayer; this.roleType = roleType;
+            this.x = x; this.y = y; this.hp = 100; this.mp = 0;
+            this.state = 'IDLE'; this.target = null;
             let cfg = ASSETS_CONFIG[roleType];
             this.collider = cfg.collider || {width: 40, height: 80};
 
-            // 🌟 优化2：速度随机化 (±10%)
             let speedVariance = 0.9 + Math.random() * 0.2;
-
+            // 🔥 数值调整：速度大幅降低，伤害降低
             if (roleType === 'ARCHER') {
                 this.range = 300;
-                this.speed = 50 * speedVariance;
-                this.baseDmg = 15;
+                this.speed = 30 * speedVariance; // 原50 -> 30
+                this.baseDmg = 8; // 原15 -> 8
             } else {
                 this.range = 60;
-                this.speed = 80 * speedVariance;
-                this.baseDmg = 25;
+                this.speed = 40 * speedVariance; // 原80 -> 40
+                this.baseDmg = 12; // 原25 -> 12
             }
 
-            // 🌟 优化3：攻击计时器随机化 (-1.0 ~ 0秒)，错开第一次攻击时间
             this.atkTimer = Math.random() * -1.0;
-
             this.hitTimer = 0;
             this.animator = new SpriteAnimator(this, roleType);
         }
@@ -273,9 +358,37 @@
             let w = this.collider.width; let h = this.collider.height;
             return { rect: { x: this.x - w/2, y: this.y - h, w: w, h: h }, center: { x: this.x, y: this.y - h/2 } };
         }
+
+        castUltimate() {
+            if (this.mp < 100) return;
+            this.mp = 0;
+
+            let color = this.isPlayer ? "#ffd700" : "#ff4444";
+            let txt = this.isPlayer ? "ULTIMATE!" : "ENEMY ULT!";
+            floatingTexts.push(new FloatingText(this.x, this.y - 100, txt, color, 30));
+            ctx.translate(0, 5); setTimeout(() => ctx.translate(0, -5), 50);
+
+            if (this.roleType === 'ARCHER') {
+                if(this.target) {
+                    projectiles.push(new Projectile(this.x, this.y - 40, this.target, this, 'ULT_ARROW'));
+                }
+            } else {
+                this.hp = Math.min(100, this.hp + 30);
+                floatingTexts.push(new FloatingText(this.x, this.y - 60, "+30 HP", "#0f0", 20));
+                visualEffects.push(new VisualEffect(this.x, this.y, 'BUFF'));
+            }
+        }
+
         update(dt) {
             this.animator.update(dt);
             if (this.state === 'DEAD') return;
+
+            if (this.mp < 100) this.mp += dt * 3;
+
+            if (!this.isPlayer && this.mp >= 100) {
+                if (Math.random() < 0.02) this.castUltimate();
+            }
+
             if (this.state === 'HIT') {
                 this.hitTimer -= dt; if (this.hitTimer <= 0) this.state = 'IDLE'; return;
             }
@@ -290,12 +403,13 @@
                 let triggerTime = animConf ? animConf.damageFrame : 0.5;
                 if (this.atkTimer > triggerTime) {
                     if (this.roleType === 'ARCHER') {
-                        projectiles.push(new Projectile(this.x, this.y - 40, this.target, this));
+                        projectiles.push(new Projectile(this.x, this.y - 40, this.target, this, 'ARROW'));
                     } else {
-                        let res = calculateDamage(this.baseDmg);
-                        this.target.takeDamage(res.dmg, res.isCrit);
+                        this.target.takeDamage(this.baseDmg, Math.random() < 0.2);
                     }
-                    this.atkTimer = -0.5;
+                    this.mp = Math.min(100, this.mp + 15);
+                    // 🔥 关键修改：攻击后等待 2.0 秒 (原0.5)
+                    this.atkTimer = -2.0;
                 }
             } else {
                 this.state = 'MOVE';
@@ -306,26 +420,24 @@
 
         takeDamage(dmg, isCrit) {
             if (this.state === 'DEAD') return;
-            this.hp -= dmg; this.state = 'HIT'; this.hitTimer = 0.3;
+            this.hp -= dmg;
+            this.mp = Math.min(100, this.mp + 10);
+            this.state = 'HIT'; this.hitTimer = 0.3;
+
             let color = isCrit ? '#ffd700' : '#ffffff'; let size = isCrit ? 30 : 18; let text = isCrit ? `Crit ${dmg}!` : `${dmg}`;
             floatingTexts.push(new FloatingText(this.x, this.y - 80, text, color, size));
-            if (this.hp <= 0) {
-                this.hp = 0; this.state = 'DEAD'; checkGameOver();
-            }
+            if (this.hp <= 0) { this.hp = 0; this.state = 'DEAD'; checkGameOver(); }
         }
 
         draw(ctx) {
-            ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(this.x, this.y, 15, 6, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.ellipse(this.x, this.y, 15, 6, 0, 0, Math.PI*2); ctx.fill();
             let isLeft = !this.isPlayer;
             let drawn = this.animator.draw(ctx, this.x, this.y, isLeft);
-            if (!drawn) { ctx.fillStyle = this.isPlayer?'blue':'red'; ctx.fillRect(this.x-10, this.y-40, 20, 40); }
+            if (!drawn) { ctx.fillStyle = 'red'; ctx.fillRect(this.x-10, this.y-40, 20, 40); }
             if (this.state !== 'DEAD') {
-                ctx.fillStyle = '#333'; ctx.fillRect(this.x - 15, this.y - 85, 30, 4);
-                ctx.fillStyle = this.isPlayer ? '#0f0' : '#f00'; ctx.fillRect(this.x - 15, this.y - 85, 30 * (this.hp/100), 4);
-            }
-            if (DEBUG_MODE && this.state !== 'DEAD') {
-                let box = this.getHitBox().rect;
-                ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 1; ctx.strokeRect(box.x, box.y, box.w, box.h);
+                let barColor = this.isPlayer ? '#0f0' : '#f00';
+                ctx.fillStyle = '#000'; ctx.fillRect(this.x - 15, this.y - 85, 30, 4);
+                ctx.fillStyle = barColor; ctx.fillRect(this.x - 15, this.y - 85, 30 * (this.hp/100), 4);
             }
         }
     }
@@ -336,54 +448,52 @@
         return targets.sort((a,b) => Math.abs(a.x - me.x) - Math.abs(b.x - me.x))[0];
     }
 
-    function checkGameOver() {
-        if (IS_GAME_OVER) return;
-        let playersAlive = units.filter(u => u.isPlayer && u.hp > 0).length;
-        let enemiesAlive = units.filter(u => !u.isPlayer && u.hp > 0).length;
-        if (playersAlive === 0 || enemiesAlive === 0) {
-            IS_GAME_OVER = true;
-            let isWin = playersAlive > 0;
-            setTimeout(() => { showSettlement(isWin); }, 1000);
-        }
-    }
-
-    function showSettlement(isWin) {
-        const modal = document.getElementById('settlement-modal');
-        const text = document.getElementById('result-text');
-        modal.classList.add('show');
-        if (isWin) { text.innerText = "VICTORY"; text.className = "result-title win"; }
-        else { text.innerText = "DEFEAT"; text.className = "result-title lose"; }
-    }
-
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; width = canvas.width; height = canvas.height; }
     window.onresize = resize;
 
     function loop(timestamp) {
         let dt = (timestamp - lastTime) / 1000; lastTime = timestamp; if (dt > 0.1) dt = 0.1;
-        ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#1e272e'; ctx.fillRect(0, height/2, width, height/2);
+
+        if (imageCache['BG']) {
+            ctx.drawImage(imageCache['BG'], 0, 0, width, height);
+            ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(0,0,width,height);
+        } else { ctx.fillStyle = '#2b3e50'; ctx.fillRect(0, 0, width, height); }
+
         for (let i = projectiles.length - 1; i >= 0; i--) {
             let p = projectiles[i]; p.update(dt); p.draw(ctx);
             if (p.hit) projectiles.splice(i, 1);
         }
-        units.sort((a,b) => a.y - b.y); units.forEach(u => { u.update(dt); u.draw(ctx); });
+        units.sort((a,b) => a.y - b.y);
+        units.forEach(u => { u.update(dt); u.draw(ctx); });
+
+        for (let i = visualEffects.length - 1; i >= 0; i--) {
+            let vfx = visualEffects[i]; vfx.update(dt); vfx.draw(ctx);
+            if (vfx.finished) visualEffects.splice(i, 1);
+        }
+
         for (let i = floatingTexts.length - 1; i >= 0; i--) {
             let ft = floatingTexts[i]; ft.update(dt); ft.draw(ctx);
             if (ft.life <= 0) floatingTexts.splice(i, 1);
         }
+        UIManager.update(dt);
         requestAnimationFrame(loop);
     }
 
     resize();
     loadAssets(() => {
         document.getElementById('loading').style.display = 'none';
-        units.push(new Unit(true, 'WARRIOR', 250, height/2 + 30));
-        units.push(new Unit(true, 'WARRIOR', 250, height/2 + 60));
-        units.push(new Unit(true, 'ARCHER',  150, height/2 + 10));
-        units.push(new Unit(true, 'ARCHER',  150, height/2 + 80));
-        units.push(new Unit(false, 'WARRIOR', width - 250, height/2 + 30));
-        units.push(new Unit(false, 'WARRIOR', width - 250, height/2 + 60));
-        units.push(new Unit(false, 'ARCHER',  width - 150, height/2 + 10));
-        units.push(new Unit(false, 'ARCHER',  width - 150, height/2 + 80));
+        let uid = 0;
+        units.push(new Unit(uid++, true, 'WARRIOR', 250, height/2 + 30));
+        units.push(new Unit(uid++, true, 'WARRIOR', 250, height/2 + 60));
+        units.push(new Unit(uid++, true, 'ARCHER',  150, height/2 + 10));
+        units.push(new Unit(uid++, true, 'ARCHER',  150, height/2 + 80));
+        units.push(new Unit(uid++, true, 'ARCHER',  100, height/2 + 45));
+        UIManager.initHeroDock(units.filter(u => u.isPlayer));
+        units.push(new Unit(uid++, false, 'WARRIOR', width - 250, height/2 + 30));
+        units.push(new Unit(false, false, 'WARRIOR', width - 250, height/2 + 60));
+        units.push(new Unit(false, false, 'WARRIOR', width - 250, height/2 + 90));
+        units.push(new Unit(false, false, 'ARCHER',  width - 150, height/2 + 10));
+        units.push(new Unit(false, false, 'ARCHER',  width - 150, height/2 + 80));
         requestAnimationFrame(loop);
     });
 
