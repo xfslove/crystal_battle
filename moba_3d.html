@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Soul Hunters 3D: Steering & 3D Gizmos</title>
+    <style>
+        body { margin: 0; background: #111; overflow: hidden; font-family: 'Consolas', monospace; user-select: none; }
+        #game-stage { position: relative; width: 100vw; height: 100vh; }
+        canvas { display: block; width: 100%; height: 100%; outline: none; }
+
+        /* HUD */
+        #ui-layer { position: absolute; top: 10px; width: 100%; pointer-events: none; z-index: 10; display: flex; justify-content: center; align-items: flex-start; }
+        .top-bar { display: flex; gap: 20px; align-items: center; pointer-events: auto; }
+        .score-board {
+            background: rgba(0,0,0,0.7); color: white; padding: 8px 25px; border-radius: 5px;
+            font-size: 20px; border: 1px solid #555; text-align: center; min-width: 200px;
+        }
+        .blue { color: #44aaff; } .red { color: #ff4444; }
+        .ctrl-group { display: flex; gap: 5px; }
+        .ctrl-btn {
+            background: #333; color: #ccc; border: 1px solid #555; padding: 5px 12px;
+            cursor: pointer; font-size: 14px; border-radius: 4px; font-weight: bold; transition: all 0.1s;
+        }
+        .ctrl-btn:hover { background: #444; color: white; }
+        .ctrl-btn.active { background: #006600; color: #0f0; border-color: #0f0; }
+        .ctrl-btn.paused { background: #666600; color: #ff0; border-color: #ff0; }
+
+        #hero-dock {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 15px; z-index: 20; pointer-events: auto;
+        }
+        .hero-btn {
+            width: 60px; height: 60px; border-radius: 50%; border: 3px solid #555;
+            background: #333; color: white; font-weight: bold; font-size: 16px;
+            display: flex; justify-content: center; align-items: center; flex-direction: column;
+            cursor: pointer; transition: 0.2s; position: relative; overflow: hidden;
+        }
+        .hero-btn.ready { border-color: #ffd700; box-shadow: 0 0 15px #ffd700; background: #444; }
+        .hero-btn:active { transform: scale(0.95); }
+        .hero-btn.dead { filter: grayscale(100%); opacity: 0.5; cursor: not-allowed; }
+        .hero-txt { z-index: 2; position: relative; text-shadow: 0 0 3px black; }
+        .mp-fill { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(255, 215, 0, 0.5); transition: height 0.2s; pointer-events: none; z-index: 1; }
+
+        #settlement {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            background:rgba(0,0,0,0.85); display:none; flex-direction:column;
+            justify-content:center; align-items:center; z-index:100; color:white;
+        }
+        #settlement.show { display:flex; }
+        h1 { font-size: 60px; margin-bottom: 20px; }
+        button { padding: 10px 30px; font-size: 20px; cursor: pointer; background: #ffd700; border: none; font-weight: bold; border-radius: 5px; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 24px; z-index: 99; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div id="game-stage">
+    <div id="loading">Loading 3D Engine...</div>
+    <div id="ui-layer">
+        <div class="top-bar">
+            <div class="ctrl-group">
+                <button class="ctrl-btn" id="pause-btn" onclick="togglePause()">⏸️ 暂停</button>
+                <button class="ctrl-btn" id="speed-btn" onclick="toggleSpeed()">⏩ 1.0x</button>
+            </div>
+            <div class="score-board">
+                <span class="blue">BLUE: <span id="hp-blue">...</span></span>
+                VS
+                <span class="red">RED: <span id="hp-red">...</span></span>
+                <br>
+                <span style="font-size:14px; color:#aaa">下一波: <span id="wave-timer">--</span>s</span>
+            </div>
+            <div class="ctrl-group">
+                <button class="ctrl-btn" id="auto-btn" onclick="toggleAutoUlt()">🤖 自动大招</button>
+                <button class="ctrl-btn" id="debug-btn" onclick="toggleDebug()">🔳 Debug</button>
+            </div>
+        </div>
+    </div>
+    <div id="hero-dock"></div>
+    <div id="settlement">
+        <h1 id="win-title">VICTORY</h1>
+        <button onclick="location.reload()">RESTART</button>
+    </div>
+</div>
+
+<script>
+    /**
+     * 引擎 V71: 智能避让与3D Debug (Steering Separation & 3D Gizmos)
+     */
+
+// ================= 全局变量 =================
+    const SPAWN_INTERVAL = 15.0;
+    const RESPAWN_TIME = 20.0;
+    const COLORS = { BLUE: '#44aaff', RED: '#ff4444', MINION_BLUE: '#88ccff', MINION_RED: '#ff8888', TOWER: '#ffffff' };
+
+    let entities = [];
+    let buildings = [];
+    let projectiles = [];
+    let particles = [];
+    let waveTimer = SPAWN_INTERVAL;
+    let isGameOver = false;
+    let lastTime = 0;
+
+    let DEBUG_MODE = false;
+    let IS_PAUSED = false;
+    let TIME_SCALE = 1.0;
+    let PLAYER_AUTO_ULT = false;
+
+    let MAP = { BLUE_BASE: {}, RED_BASE: {}, LANES: {} };
+
+    let scene, camera, renderer, groundMesh;
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+
+    function getThreeColor(hexStr) { return new THREE.Color(hexStr); }
+    const COLORS_3D = { BLUE: getThreeColor(COLORS.BLUE), RED: getThreeColor(COLORS.RED) };
+
+    // ================= 3D 引擎 =================
+    function init3D() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+
+        let maxDim = Math.max(width, height);
+        camera = new THREE.PerspectiveCamera(35, width / height, 10, 10000);
+        let centerX = width / 2;
+        let centerZ = height / 2;
+        let scale = Math.max(width, height) / 700;
+        camera.position.set(centerX - 200 * scale, 450 * scale, centerZ + 600 * scale);
+        camera.lookAt(centerX, 0, centerZ);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(width, height);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('game-stage').appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xaaaaaa, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(centerX - 500, 1500, centerZ + 500);
+        dirLight.target.position.set(centerX, 0, centerZ);
+        scene.add(dirLight.target);
+        dirLight.castShadow = true;
+        const shadowD = Math.max(width, height) * 1.5;
+        dirLight.shadow.camera.left = -shadowD; dirLight.shadow.camera.right = shadowD;
+        dirLight.shadow.camera.top = shadowD; dirLight.shadow.camera.bottom = -shadowD;
+        dirLight.shadow.mapSize.width = 4096; dirLight.shadow.mapSize.height = 4096;
+        scene.add(dirLight);
+
+        const groundGeo = new THREE.PlaneGeometry(width * 2.5, height * 2.5);
+        groundGeo.rotateX(-Math.PI / 2);
+        groundGeo.translate(width / 2, 0, height / 2);
+        const groundMat = new THREE.MeshPhongMaterial({ color: 0x222222, side: THREE.DoubleSide });
+        groundMesh = new THREE.Mesh(groundGeo, groundMat);
+        groundMesh.receiveShadow = true;
+        scene.add(groundMesh);
+
+        drawLanes();
+        document.getElementById('loading').style.display = 'none';
+    }
+
+    function drawLanes() {
+        const material = new THREE.LineBasicMaterial({ color: 0x444444, linewidth: 2 });
+        const yHeight = 5;
+        const createLine = (pts) => {
+            const geo = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, yHeight, p.y)));
+            scene.add(new THREE.Line(geo, material));
+        };
+        if (MAP.BLUE_BASE && MAP.RED_BASE) {
+            createLine([MAP.BLUE_BASE, MAP.LANES.TOP_LEFT, MAP.RED_BASE]);
+            createLine([MAP.BLUE_BASE, MAP.LANES.BOT_RIGHT, MAP.RED_BASE]);
+            createLine([MAP.BLUE_BASE, MAP.RED_BASE]);
+        }
+    }
+
+    // ================= 游戏控制 =================
+    function toggleDebug() { DEBUG_MODE = !DEBUG_MODE; document.getElementById('debug-btn').classList.toggle('active'); }
+    function togglePause() { IS_PAUSED = !IS_PAUSED; const btn = document.getElementById('pause-btn'); btn.classList.toggle('paused'); btn.innerText = IS_PAUSED ? "▶️ 继续" : "⏸️ 暂停"; }
+    function toggleSpeed() { TIME_SCALE = TIME_SCALE === 1.0 ? 2.0 : 1.0; const btn = document.getElementById('speed-btn'); btn.classList.toggle('active'); btn.innerText = TIME_SCALE === 2.0 ? "⏩ 2.0x" : "⏩ 1.0x"; }
+    function toggleAutoUlt() { PLAYER_AUTO_ULT = !PLAYER_AUTO_ULT; document.getElementById('auto-btn').classList.toggle('active'); }
+
+    function getSpawnPoint(team, lane) {
+        let base = team === 'BLUE' ? MAP.BLUE_BASE : MAP.RED_BASE;
+        let x = base.x, y = base.y, offset = 50;
+        if (team === 'BLUE') {
+            if (lane === 'TOP') y -= offset;
+            else if (lane === 'BOT') x += offset;
+            else { x += offset*0.7; y -= offset*0.7; }
+        } else {
+            if (lane === 'TOP') x -= offset;
+            else if (lane === 'BOT') y += offset;
+            else { x -= offset*0.7; y += offset*0.7; }
+        }
+        x += (Math.random() * 10 - 5); y += (Math.random() * 10 - 5);
+        return { x, y };
+    }
+
+    // 🔥 物理引擎：只处理建筑硬阻挡 (单位互斥由移动逻辑中的“避让”处理)
+    function resolveCollisions() {
+        entities.forEach(u => {
+            if (u.dead || u.state === 'RESPAWNING') return;
+
+            // 边界限制
+            if (u.x < u.physicsRadius) u.x = u.physicsRadius; if (u.x > width - u.physicsRadius) u.x = width - u.physicsRadius;
+            if (u.y < u.physicsRadius) u.y = u.physicsRadius; if (u.y > height - u.physicsRadius) u.y = height - u.physicsRadius;
+
+            buildings.forEach(b => {
+                if (b.dead) return;
+                let halfW = b.collider.w / 2; let halfH = b.collider.h / 2;
+                let minX = b.x - halfW; let maxX = b.x + halfW;
+                let minY = b.y - halfH; let maxY = b.y + halfH;
+                let cx = Math.max(minX, Math.min(u.x, maxX));
+                let cy = Math.max(minY, Math.min(u.y, maxY));
+                let dx = u.x - cx; let dy = u.y - cy;
+                let distSq = dx*dx + dy*dy;
+                if (distSq < u.physicsRadius * u.physicsRadius) {
+                    let dist = Math.sqrt(distSq);
+                    if (dist > 0) {
+                        let overlap = u.physicsRadius - dist; let nx = dx / dist; let ny = dy / dist;
+                        u.x += nx * overlap; u.y += ny * overlap;
+                    } else {
+                        let dLeft = u.x - minX; let dRight = maxX - u.x; let dTop = u.y - minY; let dBottom = maxY - u.y;
+                        let minD = Math.min(dLeft, dRight, dTop, dBottom);
+                        const buffer = 0.5;
+                        if (minD === dLeft) u.x = minX - u.physicsRadius - buffer;
+                        else if (minD === dRight) u.x = maxX + u.physicsRadius + buffer;
+                        else if (minD === dTop) u.y = minY - u.physicsRadius - buffer;
+                        else u.y = maxY + u.physicsRadius + buffer;
+                    }
+                }
+            });
+        });
+    }
+
+    function createVFX(type, x, y, color) {
+        if (type === 'NORMAL') {
+            for(let i=0; i<3; i++) particles.push(new Particle(x, y, '#cccccc', 'SMALL'));
+        } else if (type === 'CRIT') {
+            for(let i=0; i<15; i++) {
+                let c = Math.random() > 0.5 ? '#ffd700' : '#ff4500';
+                particles.push(new Particle(x, y, c, 'BURST'));
+            }
+        } else if (type === 'ULT') {
+            particles.push(new ShockwaveRing(x, y, color));
+            for(let i=0; i<20; i++) particles.push(new Particle(x, y, color, 'RISE'));
+        }
+    }
+
+    // 智能索敌
+    function findSmartTarget(me, range) {
+        let candidates = [...entities, ...buildings].filter(e => e.team !== me.team && !e.dead && e.state !== 'RESPAWNING');
+        let inRange = candidates.filter(e => Math.hypot(e.x - me.x, e.y - me.y) <= range);
+        if (inRange.length === 0) return null;
+        let units = inRange.filter(e => e instanceof Unit);
+        let structs = inRange.filter(e => e instanceof Building);
+        if (units.length > 0) {
+            return units.sort((a,b) => Math.hypot(a.x-me.x, a.y-me.y) - Math.hypot(b.x-me.x, b.y-me.y))[0];
+        }
+        return structs.sort((a,b) => Math.hypot(a.x-me.x, a.y-me.y) - Math.hypot(b.x-me.x, b.y-me.y))[0];
+    }
+
+    // ================= 实体类 =================
+
+    class Entity {
+        constructor(x, y, team, radius) {
+            this.x = x; this.y = y; this.team = team;
+            this.radius = radius;
+            this.physicsRadius = radius;
+            this.hp = 100; this.maxHp = 100; this.dead = false;
+            this.mesh = null; this.hpBarGroup = null; this.hpBarFill = null;
+            this.debugGroup = null;
+        }
+
+        sync3D() {
+            if (!this.mesh) return;
+            let visible = !this.dead && this.state !== 'RESPAWNING';
+            this.mesh.visible = visible;
+            if(this.hpBarGroup) this.hpBarGroup.visible = visible;
+            if(this.debugGroup) {
+                this.debugGroup.visible = visible && DEBUG_MODE;
+                if(visible) this.debugGroup.position.set(this.x, 0, this.y); // 基座在地面
+            }
+            if (visible) {
+                this.mesh.position.set(this.x, this.mesh.userData.yOffset || 0, this.y);
+                if (this.hpBarGroup) {
+                    this.hpBarGroup.position.set(this.x, (this.mesh.userData.height || 20) + 15, this.y);
+                    let pct = Math.max(0, this.hp / this.maxHp);
+                    this.hpBarFill.scale.x = pct;
+                    this.hpBarFill.visible = pct > 0;
+                    this.hpBarGroup.rotation.x = -Math.PI / 4;
+                    this.hpBarGroup.lookAt(camera.position);
+                }
+            }
+        }
+
+        createHpBar(w) {
+            this.hpBarGroup = new THREE.Group();
+            const bgGeo = new THREE.PlaneGeometry(w, 6);
+            const bgMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
+            this.hpBarGroup.add(new THREE.Mesh(bgGeo, bgMat));
+            const fillGeo = new THREE.PlaneGeometry(w, 4);
+            fillGeo.translate(w/2, 0, 0);
+            let color = this.team === 'BLUE' ? 0x00ff00 : 0xff3333;
+            this.hpBarFill = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide }));
+            this.hpBarFill.position.x = -w/2;
+            this.hpBarFill.position.z = 0.5;
+            this.hpBarGroup.add(this.hpBarFill);
+            scene.add(this.hpBarGroup);
+        }
+
+        // 🔥 Debug 3D 线框生成
+        createDebug3D(radius, height, isBox=false, attackRange=0) {
+            this.debugGroup = new THREE.Group();
+            let geo, color = 0x00ff00; // 默认绿色
+
+            if (isBox) {
+                // 建筑：方形线框 (青色)
+                geo = new THREE.BoxGeometry(radius, height, radius); // radius这里是传的 collider.w
+                color = 0x00ffff;
+            } else {
+                // 单位：圆柱线框 (绿色)
+                geo = new THREE.CylinderGeometry(radius, radius, height, 16);
+            }
+
+            const edges = new THREE.EdgesGeometry(geo);
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: color }));
+            line.position.y = height / 2;
+            this.debugGroup.add(line);
+
+            // 攻击范围 (黄色地面圈)
+            if (attackRange > 0) {
+                const curve = new THREE.EllipseCurve(0, 0, attackRange, attackRange, 0, 2 * Math.PI);
+                const pts = curve.getPoints(64);
+                const rngGeo = new THREE.BufferGeometry().setFromPoints(pts);
+                const rngLine = new THREE.Line(rngGeo, new THREE.LineBasicMaterial({ color: 0xffff00 }));
+                rngLine.rotation.x = -Math.PI / 2;
+                rngLine.position.y = 1;
+                this.debugGroup.add(rngLine);
+            }
+
+            scene.add(this.debugGroup);
+        }
+
+        takeDamage(amount, isCrit) {
+            if(this.dead) return;
+            this.hp -= amount;
+            if (this.type === 'HERO' || isCrit) createVFX(isCrit ? 'CRIT' : 'NORMAL', this.x, this.y, '#fff');
+            if(this.hp <= 0) { this.hp = 0; this.die(); }
+        }
+
+        dispose() {
+            if (this.mesh) { scene.remove(this.mesh); this.mesh = null; }
+            if (this.hpBarGroup) { scene.remove(this.hpBarGroup); this.hpBarGroup = null; }
+            if (this.debugGroup) { scene.remove(this.debugGroup); this.debugGroup = null; }
+        }
+
+        die() {
+            this.dead = true;
+            createVFX('CRIT', this.x, this.y, this.team === 'BLUE' ? COLORS.BLUE : COLORS.RED);
+            if (this.type !== 'HERO') this.dispose();
+        }
+    }
+
+    class Building extends Entity {
+        constructor(x, y, team, type, lane) {
+            super(x, y, team, type === 'BASE' ? 35 : 20);
+            this.type = type;
+            this.lane = lane;
+            this.maxHp = type === 'BASE' ? 4000 : 1500; this.hp = this.maxHp;
+            this.range = 160; this.atkDmg = 50; this.atkTimer = 0;
+
+            this.visualSize = type === 'BASE' ? 60 : 40;
+            this.visualHeight = type === 'BASE' ? 40 : 80;
+            this.collider = { w: this.visualSize * 1.3, h: this.visualSize * 1.3 };
+            this.createMesh();
+        }
+        createMesh() {
+            const color = this.team === 'BLUE' ? COLORS_3D.BLUE : COLORS_3D.RED;
+            const geo = new THREE.BoxGeometry(this.visualSize, this.visualHeight, this.visualSize);
+            const mat = new THREE.MeshPhongMaterial({ color: color });
+            this.mesh = new THREE.Mesh(geo, mat);
+            this.mesh.userData.yOffset = this.visualHeight / 2;
+            this.mesh.userData.height = this.visualHeight;
+            this.mesh.castShadow = true; this.mesh.receiveShadow = true;
+            scene.add(this.mesh);
+            this.createHpBar(this.visualSize);
+            // 🔥 Debug: 显示3D方框
+            this.createDebug3D(this.collider.w, this.visualHeight, true, this.range);
+            this.sync3D();
+        }
+        update(dt) {
+            if (this.dead) return;
+            this.atkTimer += dt;
+            if (this.atkTimer > 1.2) {
+                let target = findSmartTarget(this, this.range);
+                if (target) {
+                    projectiles.push(new Projectile(this.x, this.y, target, this.atkDmg, '#ffff00'));
+                    this.atkTimer = 0;
+                }
+            }
+            this.sync3D();
+        }
+        draw(ctx) {}
+        die() { super.die(); this.dispose(); if (this.type === 'BASE') checkGameOver(this.team); }
+    }
+
+    class Unit extends Entity {
+        constructor(id, x, y, team, type, lane) {
+            super(x, y, team, type === 'HERO' ? 16 : 10);
+            this.physicsRadius = this.radius * 2.0;
+            this.id = id; this.type = type; this.lane = lane;
+            if (type === 'HERO') { this.maxHp = 1200; this.atk = 100; this.speed = 60; this.range = 130; this.mp = 0; this.maxMp = 100; }
+            else { this.maxHp = 300; this.atk = 20; this.speed = 40; this.range = 45; }
+            this.hp = this.maxHp;
+            this.state = 'MOVE'; this.respawnTimer = 0; this.target = null; this.atkTimer = 0;
+            this.waypoints = this.getWaypoints(team, lane); this.wpIndex = 0; this.uiBtn = null;
+            this.facingAngle = 0;
+            this.createMesh();
+        }
+        createMesh() {
+            const color = this.team === 'BLUE' ? COLORS_3D.BLUE : COLORS_3D.RED;
+            const r = this.radius;
+            const h = this.type === 'HERO' ? 40 : 25;
+            const geo = new THREE.CylinderGeometry(r, r, h, 16);
+            const mat = new THREE.MeshPhongMaterial({ color: color });
+            this.mesh = new THREE.Mesh(geo, mat);
+            this.mesh.userData.yOffset = h / 2;
+            this.mesh.userData.height = h;
+            this.mesh.castShadow = true; this.mesh.receiveShadow = true;
+
+            const noseGeo = new THREE.BoxGeometry(r/2, r/2, r);
+            const noseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const nose = new THREE.Mesh(noseGeo, noseMat);
+            nose.position.set(0, h/4, r);
+            this.mesh.add(nose);
+
+            if (this.type === 'HERO') {
+                const ringGeo = new THREE.TorusGeometry(r+2, 1, 16, 32);
+                ringGeo.rotateX(Math.PI/2);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+                this.ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                this.ringMesh.position.y = -h/2 + 1;
+                this.mesh.add(this.ringMesh);
+            }
+
+            scene.add(this.mesh);
+            this.createHpBar(r*2);
+            // 🔥 Debug: 显示3D圆柱
+            this.createDebug3D(this.physicsRadius, h, false, this.range);
+            this.sync3D();
+        }
+
+        getWaypoints(team, lane) {
+            let path = []; let enemyBase = team === 'BLUE' ? MAP.RED_BASE : MAP.BLUE_BASE; let off = (Math.random() - 0.5) * 40;
+            if (lane === 'MID') { path.push({x: enemyBase.x, y: enemyBase.y}); }
+            else if (lane === 'TOP') { path.push({x: MAP.LANES.TOP_LEFT.x + off, y: MAP.LANES.TOP_LEFT.y + off}); path.push({x: enemyBase.x, y: enemyBase.y}); }
+            else if (lane === 'BOT') { path.push({x: MAP.LANES.BOT_RIGHT.x + off, y: MAP.LANES.BOT_RIGHT.y + off}); path.push({x: enemyBase.x, y: enemyBase.y}); }
+            return path;
+        }
+
+        update(dt) {
+            if (this.state === 'RESPAWNING') { this.respawnTimer -= dt; if (this.respawnTimer <= 0) this.respawn(); this.sync3D(); return; }
+            if (this.dead) { this.sync3D(); return; }
+
+            if (this.type === 'HERO' && this.mp < 100) this.mp += dt * 8;
+            let shouldAutoUlt = !this.isPlayerControlled() || PLAYER_AUTO_ULT;
+            if (this.type === 'HERO' && shouldAutoUlt && this.mp >= 100 && this.target) { if(Math.random() < 0.05) this.castUltimate(); }
+
+            if (this.type === 'HERO') {
+                let myBase = buildings.find(b => b.type === 'BASE' && b.team === this.team);
+                let enemiesAtBase = entities.some(e => e.team !== this.team && !e.dead && Math.hypot(e.x - myBase.x, e.y - myBase.y) < 400);
+                if (enemiesAtBase) {
+                    let targetAtBase = findSmartTarget(myBase, 400);
+                    if (targetAtBase) { this.target = targetAtBase; }
+                    else { this.target = null; this.moveTowards(myBase.x, myBase.y, dt); this.sync3D(); return; }
+                }
+            }
+
+            if (!this.target || this.target.dead || this.target.state === 'RESPAWNING') {
+                let searchRange = 280; if (this.type === 'MINION') searchRange = 180;
+                else if (this.wpIndex === 0 && this.lane !== 'MID') searchRange = 200;
+                this.target = findSmartTarget(this, searchRange);
+
+                if (this.type === 'HERO' && !this.target) {
+                    let enemyTowerInLane = buildings.find(b => b.team !== this.team && b.type === 'TOWER' && b.lane === this.lane && !b.dead);
+                    if (!enemyTowerInLane) {
+                        let roamTarget = findSmartTarget(this, 2000);
+                        if(roamTarget) this.target = roamTarget;
+                    }
+                }
+            }
+
+            if (this.target) {
+                let dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
+                let range = this.range + this.target.physicsRadius;
+                if (this.type === 'MINION' && dist > 250) { this.target = null; this.state = 'MOVE'; return; }
+                if (dist <= range) {
+                    this.atkTimer += dt;
+                    this.facingAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+                    if (this.atkTimer > 1.5) {
+                        let isCrit = Math.random() < 0.2; let dmg = this.atk * (isCrit ? 2.0 : 1.0);
+                        if (this.range > 50) projectiles.push(new Projectile(this.x, this.y, this.target, dmg, '#fff'));
+                        else this.target.takeDamage(dmg, isCrit);
+                        this.atkTimer = 0; if(this.type === 'HERO') this.mp = Math.min(100, this.mp + 15);
+                    }
+                } else { this.moveTowards(this.target.x, this.target.y, dt); }
+            } else {
+                if (this.lane !== 'MID' && this.wpIndex === 0 && this.waypoints.length > 1) {
+                    let wp0 = this.waypoints[0];
+                    let passed = false;
+                    if (this.team === 'BLUE' && this.lane === 'TOP' && this.y < wp0.y) passed = true;
+                    if (this.team === 'BLUE' && this.lane === 'BOT' && this.x > wp0.x) passed = true;
+                    if (this.team === 'RED'  && this.lane === 'TOP' && this.x < wp0.x) passed = true;
+                    if (this.team === 'RED'  && this.lane === 'BOT' && this.y > wp0.y) passed = true;
+                    if (passed) this.wpIndex = 1;
+                }
+                if (this.wpIndex < this.waypoints.length) {
+                    let wp = this.waypoints[this.wpIndex];
+                    if (Math.hypot(wp.x - this.x, wp.y - this.y) < 20) this.wpIndex++; else this.moveTowards(wp.x, wp.y, dt);
+                }
+            }
+            this.sync3D();
+        }
+
+        // 🔥 核心：移动 + 智能避让
+        moveTowards(tx, ty, dt) {
+            // 1. 目标方向向量
+            let dx = tx - this.x;
+            let dy = ty - this.y;
+            let dist = Math.hypot(dx, dy);
+            if(dist === 0) return;
+
+            let moveX = (dx / dist);
+            let moveY = (dy / dist);
+
+            // 2. 避让向量 (Steering Separation)
+            let sepX = 0, sepY = 0, count = 0;
+            entities.forEach(other => {
+                if (other === this || other.dead || other.state === 'RESPAWNING') return;
+                let d = Math.hypot(this.x - other.x, this.y - other.y);
+                // 避让判定半径
+                let sepRad = this.physicsRadius + other.physicsRadius;
+                if (d < sepRad && d > 0) {
+                    // 向量指向反方向
+                    let pushX = (this.x - other.x) / d;
+                    let pushY = (this.y - other.y) / d;
+                    // 越近推力越大
+                    let weight = (sepRad - d) / sepRad;
+                    sepX += pushX * weight;
+                    sepY += pushY * weight;
+                    count++;
+                }
+            });
+
+            if (count > 0) {
+                // 🔥 混合目标方向和避让方向 (避让权重设为 1.5，让它们更倾向于绕开)
+                moveX += sepX * 1.5;
+                moveY += sepY * 1.5;
+
+                // 重新归一化
+                let moveLen = Math.hypot(moveX, moveY);
+                if (moveLen > 0) { moveX /= moveLen; moveY /= moveLen; }
+            }
+
+            // 3. 应用移动
+            this.facingAngle = Math.atan2(moveY, moveX);
+            this.x += moveX * this.speed * dt;
+            this.y += moveY * this.speed * dt;
+        }
+
+        sync3D() {
+            super.sync3D();
+            if (this.mesh && !this.dead) {
+                this.mesh.rotation.y = -this.facingAngle + Math.PI/2;
+                if (this.ringMesh) this.ringMesh.visible = (this.mp >= 100);
+            }
+        }
+
+        castUltimate() {
+            if (this.mp < 100 || this.dead) return;
+            this.mp = 0;
+            let color = this.team === 'BLUE' ? COLORS.BLUE : COLORS.RED;
+            createVFX('ULT', this.x, this.y, color);
+            let targets = findAllTargets(this, 250);
+            targets.forEach(t => t.takeDamage(200, true));
+        }
+        isPlayerControlled() { return this.team === 'BLUE'; }
+        die() { if (this.type === 'HERO') { this.state = 'RESPAWNING'; this.respawnTimer = RESPAWN_TIME; this.dead = true; if(this.uiBtn) this.uiBtn.classList.add('dead'); } else { super.die(); } }
+        respawn() {
+            this.dead = false; this.hp = this.maxHp; this.mp = 0; this.state = 'IDLE'; this.lane = getBestLane(this.team);
+            let spawnPos = getSpawnPoint(this.team, this.lane); this.x = spawnPos.x; this.y = spawnPos.y; this.target = null; this.waypoints = this.getWaypoints(this.team, this.lane); this.wpIndex = 0;
+            createVFX('ULT', this.x, this.y, '#fff');
+            if(this.uiBtn) { this.uiBtn.classList.remove('dead'); let txtSpan = this.uiBtn.querySelector('.hero-txt'); if(txtSpan) txtSpan.innerText = this.lane[0]; }
+            this.sync3D();
+        }
+        draw(ctx) {}
+    }
+
+    function findNearestTarget(me, range) { return findSmartTarget(me, range); } // Fallback
+
+    function findAllTargets(me, range) { return [...entities, ...buildings].filter(e => e.team !== me.team && !e.dead && e.state !== 'RESPAWNING' && Math.hypot(e.x - me.x, e.y - me.y) <= range); }
+    function getBestLane(myTeam) { let counts = { 'TOP': 0, 'MID': 0, 'BOT': 0 }; entities.forEach(e => { if (!e.dead && e.state !== 'RESPAWNING' && e.lane) counts[e.lane]++; }); let best = 'MID'; if (counts.TOP > counts.MID && counts.TOP > counts.BOT) best = 'TOP'; else if (counts.BOT > counts.MID && counts.BOT > counts.TOP) best = 'BOT'; return best; }
+    function checkGameOver(loserTeam) { if (isGameOver) return; isGameOver = true; let title = document.getElementById('win-title'); document.getElementById('settlement').classList.add('show'); if (loserTeam === 'RED') { title.innerText = "BLUE WINS!"; title.style.color = COLORS.BLUE; } else { title.innerText = "RED WINS!"; title.style.color = COLORS.RED; } }
+
+    class Projectile {
+        constructor(x, y, target, dmg, color) {
+            this.x = x; this.y = y; this.target = target; this.dmg = dmg; this.color = color; this.speed = 400; this.hit = false;
+            this.createMesh();
+        }
+        createMesh() {
+            const geo = new THREE.SphereGeometry(4, 8, 8);
+            const mat = new THREE.MeshBasicMaterial({ color: getThreeColor(this.color) });
+            this.mesh = new THREE.Mesh(geo, mat);
+            this.mesh.position.set(this.x, 20, this.y);
+            this.debugMesh = new THREE.Mesh(new THREE.SphereGeometry(6, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true }));
+            this.debugMesh.visible = false;
+            scene.add(this.mesh); scene.add(this.debugMesh);
+        }
+        update(dt) {
+            if (this.hit) { if(this.mesh) this.dispose(); return; }
+            if (this.target.dead) { this.hit = true; this.dispose(); return; }
+            let dx = this.target.x - this.x; let dy = this.target.y - this.y; let dist = Math.hypot(dx, dy);
+            if (dist < 15) { this.hit = true; this.target.takeDamage(this.dmg, false); this.dispose(); }
+            else { let angle = Math.atan2(dy, dx); this.x += Math.cos(angle) * this.speed * dt; this.y += Math.sin(angle) * this.speed * dt; }
+            if(this.mesh) {
+                this.mesh.position.set(this.x, 20, this.y);
+                this.debugMesh.position.copy(this.mesh.position);
+                this.debugMesh.visible = DEBUG_MODE;
+            }
+        }
+        dispose() { if(this.mesh) { scene.remove(this.mesh); this.mesh = null; } if(this.debugMesh) { scene.remove(this.debugMesh); this.debugMesh = null; } }
+        draw(ctx) {}
+    }
+
+    class Particle {
+        constructor(x, y, color, type='SMALL') {
+            this.x=x; this.y=y;
+            this.type = type;
+            if (type === 'BURST') {
+                this.life = 0.5; this.vx=(Math.random()-0.5)*300; this.vy=(Math.random()-0.5)*300; this.vz=(Math.random())*200; this.createMesh(color, 6);
+            } else if (type === 'RISE') {
+                this.life = 1.0; this.vx=(Math.random()-0.5)*50; this.vy=(Math.random()-0.5)*50; this.vz=100 + Math.random()*100; this.createMesh(color, 4);
+            } else {
+                this.life = 0.3; this.vx=(Math.random()-0.5)*100; this.vy=(Math.random()-0.5)*100; this.vz=50; this.createMesh(color, 3);
+            }
+        }
+        createMesh(color, size) {
+            const geo = new THREE.BoxGeometry(size, size, size);
+            const mat = new THREE.MeshBasicMaterial({ color: getThreeColor(color) });
+            this.mesh = new THREE.Mesh(geo, mat);
+            this.mesh.position.set(this.x, 5, this.y);
+            this.mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+            scene.add(this.mesh);
+        }
+        update(dt) {
+            this.x+=this.vx*dt; this.y+=this.vy*dt;
+            this.mesh.position.y += this.vz*dt;
+            if (this.type === 'BURST') this.vz -= 500*dt;
+            this.mesh.rotation.x += dt * 5;
+            this.life-=dt;
+            if(this.mesh) {
+                this.mesh.position.set(this.x, this.mesh.position.y, this.y);
+                this.mesh.scale.setScalar(this.life * 2);
+                if(this.life <= 0) { scene.remove(this.mesh); this.mesh = null; }
+            }
+        }
+        draw(ctx) {}
+    }
+
+    class ShockwaveRing {
+        constructor(x, y, color) {
+            this.x=x; this.y=y; this.life=0.5; this.maxLife=0.5;
+            const geo = new THREE.RingGeometry(10, 20, 32); geo.rotateX(-Math.PI/2);
+            const mat = new THREE.MeshBasicMaterial({ color: getThreeColor(color), transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+            this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.set(x, 2, y); scene.add(this.mesh);
+        }
+        update(dt) {
+            this.life-=dt;
+            if(this.mesh) {
+                let scale = 1 + (this.maxLife - this.life) * 15;
+                this.mesh.scale.set(scale, scale, scale);
+                this.mesh.material.opacity = this.life / this.maxLife;
+                if(this.life <= 0) { scene.remove(this.mesh); this.mesh = null; }
+            }
+        }
+        draw(ctx){}
+    }
+
+    function spawnMinions() { ['TOP', 'MID', 'BOT'].forEach(lane => { let bPos = getSpawnPoint('BLUE', lane); entities.push(new Unit(-1, bPos.x, bPos.y, 'BLUE', 'MINION', lane)); let rPos = getSpawnPoint('RED', lane); entities.push(new Unit(-1, rPos.x, rPos.y, 'RED', 'MINION', lane)); }); }
+    function initUI() { const dock = document.getElementById('hero-dock'); entities.forEach(e => { if (e.type === 'HERO' && e.team === 'BLUE') { let btn = document.createElement('div'); btn.className = 'hero-btn'; btn.innerHTML = `<span class="hero-txt">${e.lane[0]}</span><div class="mp-fill" id="mp-${e.id}"></div>`; btn.onclick = () => e.castUltimate(); dock.appendChild(btn); e.uiBtn = btn; } }); }
+    function updateUI() { entities.forEach(e => { if (e.uiBtn) { let fill = e.uiBtn.querySelector('.mp-fill'); if (fill) fill.style.height = `${e.mp}%`; if (e.mp >= 100) e.uiBtn.classList.add('ready'); else e.uiBtn.classList.remove('ready'); } }); let bBase = buildings.find(b=>b.type==='BASE'&&b.team==='BLUE'); let rBase = buildings.find(b=>b.type==='BASE'&&b.team==='RED'); if(bBase) document.getElementById('hp-blue').innerText = Math.floor(bBase.hp); if(rBase) document.getElementById('hp-red').innerText = Math.floor(rBase.hp); }
+    function initGame() {
+        width = window.innerWidth; height = window.innerHeight;
+        MAP.BLUE_BASE = { x: 100, y: height - 100 }; MAP.RED_BASE = { x: width - 100, y: 100 }; MAP.LANES = { TOP_LEFT: { x: 100, y: 100 }, BOT_RIGHT: { x: width - 100, y: height - 100 } };
+
+        init3D();
+
+        buildings.push(new Building(MAP.BLUE_BASE.x, MAP.BLUE_BASE.y, 'BLUE', 'BASE', 'ALL'));
+        buildings.push(new Building(MAP.RED_BASE.x, MAP.RED_BASE.y, 'RED', 'BASE', 'ALL'));
+
+        let midX = (MAP.BLUE_BASE.x+MAP.RED_BASE.x)/2, midY = (MAP.BLUE_BASE.y+MAP.RED_BASE.y)/2;
+        buildings.push(new Building(midX-120, midY+120, 'BLUE', 'TOWER', 'MID'));
+        buildings.push(new Building(midX+120, midY-120, 'RED', 'TOWER', 'MID'));
+
+        buildings.push(new Building(50, 300, 'BLUE', 'TOWER', 'TOP'));
+        buildings.push(new Building(300, 50, 'RED', 'TOWER', 'TOP'));
+
+        buildings.push(new Building(width-300, height-50, 'BLUE', 'TOWER', 'BOT'));
+        buildings.push(new Building(width-50, height-300, 'RED', 'TOWER', 'BOT'));
+
+        let lanes = ['TOP','TOP','MID','BOT','BOT']; let uid = 0; lanes.forEach(l => { let bPos = getSpawnPoint('BLUE', l); entities.push(new Unit(uid++, bPos.x, bPos.y, 'BLUE', 'HERO', l)); let rPos = getSpawnPoint('RED', l); entities.push(new Unit(uid++, rPos.x, rPos.y, 'RED', 'HERO', l)); }); initUI(); spawnMinions(); requestAnimationFrame(loop);
+    }
+    function loop(timestamp) { let rawDt = (timestamp - lastTime)/1000; lastTime = timestamp; if(rawDt > 0.1 || isNaN(rawDt)) rawDt = 0.016; let dt = IS_PAUSED ? 0 : rawDt * TIME_SCALE; if (!isGameOver) { if (!IS_PAUSED) { waveTimer -= dt; if(waveTimer <= 0) { spawnMinions(); waveTimer = SPAWN_INTERVAL; } document.getElementById('wave-timer').innerText = waveTimer.toFixed(1); resolveCollisions(); } [...entities, ...buildings, ...projectiles, ...particles].forEach(e => e.update(dt)); if (!IS_PAUSED) { entities = entities.filter(e => e.type === 'HERO' || !e.dead); buildings = buildings.filter(b => !b.dead); projectiles = projectiles.filter(p => !p.hit); particles = particles.filter(p => p.life > 0); updateUI(); } } renderer.render(scene, camera); requestAnimationFrame(loop); }
+    window.onresize = () => { width = window.innerWidth; height = window.innerHeight; let centerX = width/2, centerZ = height/2; let scale = Math.max(width, height) / 700; camera.aspect = width / height; camera.updateProjectionMatrix(); camera.position.set(centerX - 200 * scale, 450 * scale, centerZ + 600 * scale); camera.lookAt(centerX, 0, centerZ); renderer.setSize(width, height); }; initGame();
+
+</script>
+</body>
+</html>
