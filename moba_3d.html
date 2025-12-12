@@ -2,45 +2,64 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Soul Hunters 3D</title>
+    <title>Soul Hunters 3D: Final UI Polish</title>
     <style>
         body { margin: 0; background: #111; overflow: hidden; font-family: 'Consolas', monospace; user-select: none; }
         #game-stage { position: relative; width: 100vw; height: 100vh; }
         canvas { display: block; width: 100%; height: 100%; outline: none; }
 
-        /* HUD */
+        /* HUD - Top Layer */
         #ui-layer { position: absolute; top: 10px; width: 100%; pointer-events: none; z-index: 10; display: flex; justify-content: center; align-items: flex-start; }
-        .top-bar { display: flex; gap: 20px; align-items: center; pointer-events: auto; }
+        .top-bar { display: flex; width: 90%; justify-content: space-between; align-items: flex-start; pointer-events: auto; }
+
+        /* Score Board (Centered) */
         .score-board {
             background: rgba(0,0,0,0.7); color: white; padding: 8px 25px; border-radius: 5px;
             font-size: 20px; border: 1px solid #555; text-align: center; min-width: 200px;
+            position: absolute; left: 50%; transform: translateX(-50%);
         }
         .blue { color: #44aaff; } .red { color: #ff4444; }
-        .ctrl-group { display: flex; gap: 5px; }
+
+        /* Top Right Control (Debug) */
+        .top-right-ctrl { margin-left: auto; }
         .ctrl-btn {
             background: #333; color: #ccc; border: 1px solid #555; padding: 5px 12px;
             cursor: pointer; font-size: 14px; border-radius: 4px; font-weight: bold; transition: all 0.1s;
         }
         .ctrl-btn:hover { background: #444; color: white; }
         .ctrl-btn.active { background: #006600; color: #0f0; border-color: #0f0; }
-        .ctrl-btn.paused { background: #666600; color: #ff0; border-color: #ff0; }
 
-        #hero-dock {
+        /* Bottom Dock (Hero Skills + System Buttons) */
+        #bottom-panel {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 15px; z-index: 20; pointer-events: auto;
+            display: flex; gap: 30px; z-index: 20; pointer-events: auto; align-items: center;
         }
-        .hero-btn {
+
+        #hero-dock, #sys-dock { display: flex; gap: 15px; }
+
+        /* Circular Buttons (Shared Style) */
+        .round-btn {
             width: 60px; height: 60px; border-radius: 50%; border: 3px solid #555;
             background: #333; color: white; font-weight: bold; font-size: 16px;
             display: flex; justify-content: center; align-items: center; flex-direction: column;
             cursor: pointer; transition: 0.2s; position: relative; overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
         }
+        .round-btn:active { transform: scale(0.95); }
+        .round-btn:hover { background: #444; border-color: #777; }
+
+        /* Hero Specific Styles */
         .hero-btn.ready { border-color: #ffd700; box-shadow: 0 0 15px #ffd700; background: #444; }
-        .hero-btn:active { transform: scale(0.95); }
-        .hero-btn.dead { filter: grayscale(100%); opacity: 0.5; cursor: not-allowed; }
-        .hero-txt { z-index: 2; position: relative; text-shadow: 0 0 3px black; }
+        .hero-btn.dead { filter: grayscale(100%); opacity: 0.8; border-color: #333; cursor: not-allowed; }
+        .hero-txt { z-index: 2; position: relative; text-shadow: 0 0 3px black; font-size: 18px; }
         .mp-fill { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(255, 215, 0, 0.5); transition: height 0.2s; pointer-events: none; z-index: 1; }
 
+        /* System Buttons Specific Styles */
+        .sys-btn { font-size: 24px; border-color: #666; }
+        .sys-btn.active { border-color: #0f0; color: #0f0; background: #003300; box-shadow: 0 0 10px #0f0; }
+        .sys-btn.paused { border-color: #ff0; color: #ff0; background: #333300; box-shadow: 0 0 10px #ff0; }
+
+        /* Settlement Screen */
         #settlement {
             position: absolute; top:0; left:0; width:100%; height:100%;
             background:rgba(0,0,0,0.85); display:none; flex-direction:column;
@@ -48,7 +67,7 @@
         }
         #settlement.show { display:flex; }
         h1 { font-size: 60px; margin-bottom: 20px; }
-        button { padding: 10px 30px; font-size: 20px; cursor: pointer; background: #ffd700; border: none; font-weight: bold; border-radius: 5px; }
+        button.restart-btn { padding: 10px 30px; font-size: 20px; cursor: pointer; background: #ffd700; border: none; font-weight: bold; border-radius: 5px; }
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 24px; z-index: 99; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -57,12 +76,9 @@
 
 <div id="game-stage">
     <div id="loading">Loading 3D Engine...</div>
+
     <div id="ui-layer">
         <div class="top-bar">
-            <div class="ctrl-group">
-                <button class="ctrl-btn" id="pause-btn" onclick="togglePause()">⏸️ 暂停</button>
-                <button class="ctrl-btn" id="speed-btn" onclick="toggleSpeed()">⏩ 1.0x</button>
-            </div>
             <div class="score-board">
                 <span class="blue">BLUE: <span id="hp-blue">...</span></span>
                 VS
@@ -70,25 +86,33 @@
                 <br>
                 <span style="font-size:14px; color:#aaa">下一波: <span id="wave-timer">--</span>s</span>
             </div>
-            <div class="ctrl-group">
-                <button class="ctrl-btn" id="auto-btn" onclick="toggleAutoUlt()">🤖 自动大招</button>
-<!--                <button class="ctrl-btn" id="debug-btn" onclick="toggleDebug()">🔳 Debug</button>-->
+            <div class="top-right-ctrl">
+                <button class="ctrl-btn" id="debug-btn" onclick="toggleDebug()">🔳 Debug</button>
             </div>
         </div>
     </div>
-    <div id="hero-dock"></div>
+
+    <div id="bottom-panel">
+        <div id="hero-dock"></div>
+
+        <div style="width: 2px; height: 40px; background: #444;"></div>
+
+        <div id="sys-dock">
+            <div class="round-btn sys-btn" id="pause-btn" onclick="togglePause()" title="暂停/继续">暂停</div>
+            <div class="round-btn sys-btn" id="speed-btn" onclick="toggleSpeed()" title="变速">2x</div>
+            <div class="round-btn sys-btn" id="auto-btn" onclick="toggleAutoUlt()" title="自动大招">自动</div>
+        </div>
+    </div>
+
     <div id="settlement">
         <h1 id="win-title">VICTORY</h1>
-        <button onclick="location.reload()">RESTART</button>
+        <button class="restart-btn" onclick="location.reload()">RESTART</button>
     </div>
 </div>
 
 <script>
     /**
-     * 引擎 V79: 流畅绕行优化 (Fluid Steering)
-     * 1. 弱化刹车：不再急停，而是尝试减速并侧滑。
-     * 2. 强化绕行：大幅增加侧向避让力，让单位“流”过障碍。
-     * 3. 物理层：保持 Unit-Unit 硬碰撞，防止穿模。
+     * 引擎 V84: UI 终极优化 (Restored Respawn Timer & Unified UI)
      */
 
 // ================= 全局变量 =================
@@ -118,6 +142,7 @@
     function getThreeColor(hexStr) { return new THREE.Color(hexStr); }
     const COLORS_3D = { BLUE: getThreeColor(COLORS.BLUE), RED: getThreeColor(COLORS.RED) };
 
+    // ================= 3D 引擎 =================
     function init3D() {
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a1a);
@@ -175,27 +200,50 @@
         }
     }
 
-    function toggleDebug() { DEBUG_MODE = !DEBUG_MODE; document.getElementById('debug-btn').classList.toggle('active'); }
-    function togglePause() { IS_PAUSED = !IS_PAUSED; const btn = document.getElementById('pause-btn'); btn.classList.toggle('paused'); btn.innerText = IS_PAUSED ? "▶️ 继续" : "⏸️ 暂停"; }
-    function toggleSpeed() { TIME_SCALE = TIME_SCALE === 1.0 ? 2.0 : 1.0; const btn = document.getElementById('speed-btn'); btn.classList.toggle('active'); btn.innerText = TIME_SCALE === 2.0 ? "⏩ 2.0x" : "⏩ 1.0x"; }
-    function toggleAutoUlt() { PLAYER_AUTO_ULT = !PLAYER_AUTO_ULT; document.getElementById('auto-btn').classList.toggle('active'); }
+    // ================= 游戏控制 (UI 事件) =================
+    function toggleDebug() {
+        DEBUG_MODE = !DEBUG_MODE;
+        document.getElementById('debug-btn').classList.toggle('active');
+    }
+    function togglePause() {
+        IS_PAUSED = !IS_PAUSED;
+        const btn = document.getElementById('pause-btn');
+        btn.classList.toggle('paused');
+        btn.innerText = IS_PAUSED ? "▶️" : "⏸️";
+    }
+    function toggleSpeed() {
+        TIME_SCALE = TIME_SCALE === 1.0 ? 2.0 : 1.0;
+        const btn = document.getElementById('speed-btn');
+        btn.classList.toggle('active');
+        btn.innerText = TIME_SCALE === 2.0 ? "⏩" : "⏩";
+    }
+    function toggleAutoUlt() {
+        PLAYER_AUTO_ULT = !PLAYER_AUTO_ULT;
+        document.getElementById('auto-btn').classList.toggle('active');
+    }
 
+    // 🔥 用户自定义的 SpawnPoint 逻辑
     function getSpawnPoint(team, lane) {
         let base = team === 'BLUE' ? MAP.BLUE_BASE : MAP.RED_BASE;
-        let x = base.x, y = base.y, offset = 50;
+        let x = base.x;
+        let y = base.y;
+
         if (team === 'BLUE') {
-            if (lane === 'TOP') y -= offset; else if (lane === 'BOT') x += offset; else { x += offset*0.7; y -= offset*0.7; }
+            if (lane === 'TOP') { x += 45; y -= 70; }
+            else if (lane === 'BOT') { x += 70; y -= 15; }
+            else { x += 70; y -= 70; }
         } else {
-            if (lane === 'TOP') x -= offset; else if (lane === 'BOT') y += offset; else { x -= offset*0.7; y += offset*0.7; }
+            if (lane === 'TOP') { x -= 70; y += 15; }
+            else if (lane === 'BOT') { x -= 45; y += 70; }
+            else { x -= 70; y += 70; }
         }
-        x += (Math.random() * 10 - 5); y += (Math.random() * 10 - 5);
+
         return { x, y };
     }
 
-    // 物理引擎：保持硬碰撞以防止重叠
+    // 物理引擎
     function resolveCollisions() {
         for(let iter=0; iter<3; iter++) {
-            // 1. Unit vs Unit (Hard Collision)
             for (let i = 0; i < entities.length; i++) {
                 let u1 = entities[i];
                 if (u1.dead || u1.state === 'RESPAWNING') continue;
@@ -222,8 +270,6 @@
                     }
                 }
             }
-
-            // 2. Unit vs Building
             entities.forEach(u => {
                 if (u.dead || u.state === 'RESPAWNING') return;
                 buildings.forEach(b => {
@@ -256,7 +302,7 @@
         }
     }
 
-    function createVFX(type, x, y, color) {
+    function createVFX(type, x, y, color, angle=0) {
         if (type === 'NORMAL') {
             for(let i=0; i<3; i++) particles.push(new Particle(x, y, '#cccccc', 'SMALL'));
         } else if (type === 'CRIT') {
@@ -267,21 +313,40 @@
         } else if (type === 'ULT') {
             particles.push(new ShockwaveRing(x, y, color));
             for(let i=0; i<20; i++) particles.push(new Particle(x, y, color, 'RISE'));
+        } else if (type === 'SLASH') {
+            particles.push(new MeleeSlash(x, y, angle));
         }
     }
 
-    function findSmartTarget(me, range) {
+    // 🔥 优化：增加 laneConstraint 参数，支持分路锁定
+    function findSmartTarget(me, range, laneConstraint = null) {
         let candidates = [...entities, ...buildings].filter(e => e.team !== me.team && !e.dead && e.state !== 'RESPAWNING');
 
         let inRange = candidates.filter(e => {
+            // 1. 距离判定
             let dist = Math.hypot(e.x - me.x, e.y - me.y);
             let targetRadius = e.physicsRadius || (e.collider ? e.collider.w/2 : 20);
-            return dist <= range + targetRadius;
+            if (dist > range + targetRadius) return false;
+
+            // 2. 🔥 核心修复：分路约束逻辑
+            // 如果存在分路约束（比如英雄在对线期），则忽略非本路的“杂兵”和“塔”
+            if (laneConstraint) {
+                // 英雄和基地是高优先级目标，无视分路，随时可打
+                // if (e.type === 'HERO') return true;
+                if (e.lane === 'ALL') return true;
+
+                // 其它单位（小兵、塔）必须和自己在同一路，否则忽略
+                if (e.lane !== laneConstraint) return false;
+            }
+            return true;
         });
 
         if (inRange.length === 0) return null;
+
+        // 优先级排序：单位 > 建筑
         let units = inRange.filter(e => e instanceof Unit);
         let structs = inRange.filter(e => e instanceof Building);
+
         if (units.length > 0) return units.sort((a,b) => Math.hypot(a.x-me.x, a.y-me.y) - Math.hypot(b.x-me.x, b.y-me.y))[0];
         return structs.sort((a,b) => Math.hypot(a.x-me.x, a.y-me.y) - Math.hypot(b.x-me.x, b.y-me.y))[0];
     }
@@ -296,7 +361,6 @@
             this.hp = 100; this.maxHp = 100; this.dead = false;
             this.mesh = null; this.hpBarGroup = null; this.hpBarFill = null;
             this.debugGroup = null;
-            this.steeringForce = { x: 0, y: 0 };
         }
 
         sync3D() {
@@ -386,7 +450,7 @@
             super(x, y, team, type === 'BASE' ? 35 : 20);
             this.type = type; this.lane = lane;
             this.maxHp = type === 'BASE' ? 4000 : 1500; this.hp = this.maxHp;
-            this.range = 160; this.atkDmg = 50; this.atkTimer = 0;
+            this.range = 160; this.atkDmg = 150; this.atkTimer = 0;
 
             this.visualSize = type === 'BASE' ? 60 : 40;
             this.visualHeight = type === 'BASE' ? 40 : 80;
@@ -426,9 +490,11 @@
 
     class Unit extends Entity {
         constructor(id, x, y, team, type, lane) {
-            super(x, y, team, type === 'HERO' ? 16 : 10);
+            super(x, y, team, type === 'HERO' ? 16 : 6);
             this.physicsRadius = this.radius * 2.0;
             this.id = id; this.type = type; this.lane = lane;
+            this.isFirstSpawn = true;
+
             if (type === 'HERO') { this.maxHp = 1200; this.atk = 100; this.speed = 60; this.range = 130; this.mp = 0; this.maxMp = 100; }
             else { this.maxHp = 300; this.atk = 20; this.speed = 40; this.range = 45; }
             this.hp = this.maxHp;
@@ -484,7 +550,8 @@
             if (this.dead) { this.sync3D(); return; }
 
             if (this.type === 'HERO' && this.mp < 100) this.mp += dt * 8;
-            let shouldAutoUlt = !this.isPlayerControlled() || PLAYER_AUTO_ULT;
+            let isPlayer = (this.team === 'BLUE');
+            let shouldAutoUlt = !isPlayer || PLAYER_AUTO_ULT;
             if (this.type === 'HERO' && shouldAutoUlt && this.mp >= 100 && this.target) { if(Math.random() < 0.05) this.castUltimate(); }
 
             if (this.type === 'HERO') {
@@ -498,16 +565,32 @@
             }
 
             if (!this.target || this.target.dead || this.target.state === 'RESPAWNING') {
-                let searchRange = 280; if (this.type === 'MINION') searchRange = 180;
+                let searchRange = 280;
+                if (this.type === 'MINION') searchRange = 180;
                 else if (this.wpIndex === 0 && this.lane !== 'MID') searchRange = 200;
-                this.target = findSmartTarget(this, searchRange);
 
-                if (this.type === 'HERO' && !this.target) {
-                    let enemyTowerInLane = buildings.find(b => b.team !== this.team && b.type === 'TOWER' && b.lane === this.lane && !b.dead);
-                    if (!enemyTowerInLane) {
-                        let roamTarget = findSmartTarget(this, 2000);
-                        if(roamTarget) this.target = roamTarget;
+                // 🔥 核心修复：计算分路约束
+                let laneConstraint = null;
+
+                if (this.type === 'HERO') {
+                    // 如果是英雄，检查本路敌方塔是否还活着
+                    let enemyTower = buildings.find(b => b.team !== this.team && b.type === 'TOWER' && b.lane === this.lane && !b.dead);
+                    if (enemyTower) {
+                        // 塔还在，处于对线期 -> 强制锁死在本路，不许去打隔壁路的小兵
+                        laneConstraint = this.lane;
                     }
+                } else if (this.type === 'MINION') {
+                    // 小兵永远锁死在本路
+                    laneConstraint = this.lane;
+                }
+
+                // 传入约束条件进行搜索
+                this.target = findSmartTarget(this, searchRange, laneConstraint);
+
+                // 只有当没有约束（塔掉了）且没目标时，才开启全图游走
+                if (this.type === 'HERO' && !this.target && !laneConstraint) {
+                    let roamTarget = findSmartTarget(this, 2000);
+                    if(roamTarget) this.target = roamTarget;
                 }
             }
 
@@ -523,11 +606,14 @@
                     this.facingAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
                     if (this.atkTimer > 1.5) {
                         let isCrit = Math.random() < 0.2; let dmg = this.atk * (isCrit ? 2.0 : 1.0);
-                        if (this.range > 50) projectiles.push(new Projectile(this.x, this.y, this.target, dmg, '#fff'));
-                        else this.target.takeDamage(dmg, isCrit);
+                        if (this.range > 50) {
+                            projectiles.push(new Projectile(this.x, this.y, this.target, dmg, '#fff'));
+                        } else {
+                            this.target.takeDamage(dmg, isCrit);
+                            createVFX('SLASH', this.x, this.y, '#fff', this.facingAngle);
+                        }
                         this.atkTimer = 0; if(this.type === 'HERO') this.mp = Math.min(100, this.mp + 15);
                     }
-                    // 停止移动，不做 moveTowards
                 } else {
                     this.moveTowards(this.target.x, this.target.y, dt);
                 }
@@ -549,90 +635,45 @@
             this.sync3D();
         }
 
-        // 优化后的移动逻辑：流体绕行 + 侧向滑步
         moveTowards(tx, ty, dt) {
-            let dx = tx - this.x;
-            let dy = ty - this.y;
-            let dist = Math.hypot(dx, dy);
-            if(dist === 0) return;
+            let dx = tx - this.x; let dy = ty - this.y;
+            let dist = Math.hypot(dx, dy); if(dist === 0) return;
 
-            // 1. 原始意图：直奔目标
-            let moveX = (dx / dist);
-            let moveY = (dy / dist);
+            let moveX = (dx / dist); let moveY = (dy / dist);
 
-            // 2. 避让力 (Steering)
             let steerX = 0, steerY = 0;
-            let speedMod = 1.0; // 尽量保持全速，减少急刹车
+            let speedMod = 1.0;
 
             entities.forEach(other => {
                 if (other === this || other.dead || other.state === 'RESPAWNING') return;
-
                 let d = Math.hypot(this.x - other.x, this.y - other.y);
-                // 判定范围：比物理半径稍大一点即可，不用太大，否则反应过激
                 let detectionRange = (this.physicsRadius + other.physicsRadius) * 1.5;
 
                 if (d < detectionRange && d > 0) {
-                    // 指向对方的向量（归一化）
                     let toOtherX = (other.x - this.x) / d;
                     let toOtherY = (other.y - this.y) / d;
-
-                    // 斥力强度：越近越大
                     let force = (detectionRange - d) / detectionRange;
-
-                    // 计算当前移动方向与对方方位的夹角 (Dot Product)
                     let dot = moveX * toOtherX + moveY * toOtherY;
 
                     if (dot > 0.6) {
-                        // 【情况A：正前方拥堵】 -> 产生强烈的侧向滑步力 (Tangent Force)
-                        // 这是一个简单且极有效的绕行技巧：根据相对位置计算切线方向
-                        // 如果对方略微在左，我就往右切；略微在右，我就往左切
-
-                        // 基础排斥 (不要撞上去)
-                        steerX -= toOtherX * force * 5.0;
-                        steerY -= toOtherY * force * 5.0;
-
-                        // 切向滑动 (关键优化：与其停下，不如横移)
-                        // 向量 (-y, x) 是逆时针90度，(y, -x) 是顺时针90度
-                        // 利用叉乘原理决定往哪边滑更顺
+                        steerX -= toOtherX * force * 5.0; steerY -= toOtherY * force * 5.0;
                         let cross = moveX * toOtherY - moveY * toOtherX;
-                        if (cross > 0) {
-                            // 对方在左侧，往右滑
-                            steerX += toOtherY * force * 3.0;
-                            steerY += -toOtherX * force * 3.0;
-                        } else {
-                            // 对方在右侧，往左滑
-                            steerX += -toOtherY * force * 3.0;
-                            steerY += toOtherX * force * 3.0;
-                        }
-
-                        // 只有贴得极近时才轻微减速，保留动量
-                        if (d < (this.physicsRadius + other.physicsRadius) * 1.05) {
-                            speedMod = Math.min(speedMod, 0.5);
-                        }
-                    }
-                    else if (dot > -0.5) {
-                        // 【情况B：侧方或斜后方】 -> 轻微排斥，保持队形间距
-                        steerX -= toOtherX * force * 1.5;
-                        steerY -= toOtherY * force * 1.5;
+                        if (cross > 0) { steerX += toOtherY * force * 3.0; steerY += -toOtherX * force * 3.0; }
+                        else { steerX += -toOtherY * force * 3.0; steerY += toOtherX * force * 3.0; }
+                        if (d < (this.physicsRadius + other.physicsRadius) * 1.05) { speedMod = Math.min(speedMod, 0.5); }
+                    } else if (dot > -0.5) {
+                        steerX -= toOtherX * force * 1.5; steerY -= toOtherY * force * 1.5;
                     }
                 }
             });
 
-            // 3. 引入微量随机噪点 (Jitter)
-            // 这是防止“死锁”的神器，打破完美的数学对称性，让两个面对面的单位能错开
             steerX += (Math.random() - 0.5) * 0.2;
             steerY += (Math.random() - 0.5) * 0.2;
 
-            // 4. 混合力场
-            let finalX = moveX + steerX;
-            let finalY = moveY + steerY;
-
-            // 归一化并应用
+            let finalX = moveX + steerX; let finalY = moveY + steerY;
             let finalLen = Math.hypot(finalX, finalY);
             if (finalLen > 0.01) {
-                finalX /= finalLen;
-                finalY /= finalLen;
-
+                finalX /= finalLen; finalY /= finalLen;
                 this.facingAngle = Math.atan2(finalY, finalX);
                 this.x += finalX * this.speed * dt * speedMod;
                 this.y += finalY * this.speed * dt * speedMod;
@@ -655,10 +696,20 @@
             let targets = findAllTargets(this, 250);
             targets.forEach(t => t.takeDamage(200, true));
         }
+
         isPlayerControlled() { return this.team === 'BLUE'; }
+
         die() { if (this.type === 'HERO') { this.state = 'RESPAWNING'; this.respawnTimer = RESPAWN_TIME; this.dead = true; if(this.uiBtn) this.uiBtn.classList.add('dead'); } else { super.die(); } }
+
         respawn() {
-            this.dead = false; this.hp = this.maxHp; this.mp = 0; this.state = 'IDLE'; this.lane = getBestLane(this.team);
+            this.dead = false; this.hp = this.maxHp; this.mp = 0; this.state = 'IDLE';
+
+            if (this.isFirstSpawn) {
+                this.isFirstSpawn = false;
+            } else {
+                this.lane = getBestLane(this.team);
+            }
+
             let spawnPos = getSpawnPoint(this.team, this.lane); this.x = spawnPos.x; this.y = spawnPos.y; this.target = null; this.waypoints = this.getWaypoints(this.team, this.lane); this.wpIndex = 0;
             createVFX('ULT', this.x, this.y, '#fff');
             if(this.uiBtn) { this.uiBtn.classList.remove('dead'); let txtSpan = this.uiBtn.querySelector('.hero-txt'); if(txtSpan) txtSpan.innerText = this.lane[0]; }
@@ -683,7 +734,9 @@
             const mat = new THREE.MeshBasicMaterial({ color: getThreeColor(this.color) });
             this.mesh = new THREE.Mesh(geo, mat);
             this.mesh.position.set(this.x, 20, this.y);
-            scene.add(this.mesh);
+            this.debugMesh = new THREE.Mesh(new THREE.SphereGeometry(6, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true }));
+            this.debugMesh.visible = false;
+            scene.add(this.mesh); scene.add(this.debugMesh);
         }
         update(dt) {
             if (this.hit) { if(this.mesh) this.dispose(); return; }
@@ -691,9 +744,13 @@
             let dx = this.target.x - this.x; let dy = this.target.y - this.y; let dist = Math.hypot(dx, dy);
             if (dist < 15) { this.hit = true; this.target.takeDamage(this.dmg, false); this.dispose(); }
             else { let angle = Math.atan2(dy, dx); this.x += Math.cos(angle) * this.speed * dt; this.y += Math.sin(angle) * this.speed * dt; }
-            if(this.mesh) this.mesh.position.set(this.x, 20, this.y);
+            if(this.mesh) {
+                this.mesh.position.set(this.x, 20, this.y);
+                this.debugMesh.position.copy(this.mesh.position);
+                this.debugMesh.visible = DEBUG_MODE;
+            }
         }
-        dispose() { if(this.mesh) { scene.remove(this.mesh); this.mesh = null; } }
+        dispose() { if(this.mesh) { scene.remove(this.mesh); this.mesh = null; } if(this.debugMesh) { scene.remove(this.debugMesh); this.debugMesh = null; } }
         draw(ctx) {}
     }
 
@@ -751,9 +808,80 @@
         draw(ctx){}
     }
 
-    function spawnMinions() { ['TOP', 'MID', 'BOT'].forEach(lane => { let bPos = getSpawnPoint('BLUE', lane); entities.push(new Unit(-1, bPos.x, bPos.y, 'BLUE', 'MINION', lane)); let rPos = getSpawnPoint('RED', lane); entities.push(new Unit(-1, rPos.x, rPos.y, 'RED', 'MINION', lane)); }); }
-    function initUI() { const dock = document.getElementById('hero-dock'); entities.forEach(e => { if (e.type === 'HERO' && e.team === 'BLUE') { let btn = document.createElement('div'); btn.className = 'hero-btn'; btn.innerHTML = `<span class="hero-txt">${e.lane[0]}</span><div class="mp-fill" id="mp-${e.id}"></div>`; btn.onclick = () => e.castUltimate(); dock.appendChild(btn); e.uiBtn = btn; } }); }
-    function updateUI() { entities.forEach(e => { if (e.uiBtn) { let fill = e.uiBtn.querySelector('.mp-fill'); if (fill) fill.style.height = `${e.mp}%`; if (e.mp >= 100) e.uiBtn.classList.add('ready'); else e.uiBtn.classList.remove('ready'); } }); let bBase = buildings.find(b=>b.type==='BASE'&&b.team==='BLUE'); let rBase = buildings.find(b=>b.type==='BASE'&&b.team==='RED'); if(bBase) document.getElementById('hp-blue').innerText = Math.floor(bBase.hp); if(rBase) document.getElementById('hp-red').innerText = Math.floor(rBase.hp); }
+    // 🔥 新增：Melee Slash VFX 类
+    class MeleeSlash {
+        constructor(x, y, angle) {
+            this.life = 0.2; this.maxLife = 0.2;
+            const geo = new THREE.PlaneGeometry(40, 40);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+            this.mesh = new THREE.Mesh(geo, mat);
+            let dist = 20;
+            this.mesh.position.set(x + Math.cos(angle) * dist, 15, y + Math.sin(angle) * dist);
+            this.mesh.rotation.x = -Math.PI / 2;
+            this.mesh.rotation.z = -angle;
+            scene.add(this.mesh);
+        }
+        update(dt) {
+            this.life -= dt;
+            if(this.mesh) {
+                this.mesh.scale.x += dt * 5;
+                this.mesh.material.opacity = this.life / this.maxLife;
+                if(this.life <= 0) { scene.remove(this.mesh); this.mesh = null; }
+            }
+        }
+    }
+
+    function spawnMinions() { ['MID','TOP', 'BOT'].forEach(lane => { let bPos = getSpawnPoint('BLUE', lane); entities.push(new Unit(-1, bPos.x, bPos.y, 'BLUE', 'MINION', lane)); let rPos = getSpawnPoint('RED', lane); entities.push(new Unit(-1, rPos.x, rPos.y, 'RED', 'MINION', lane)); }); }
+
+    function initUI() {
+        const dock = document.getElementById('hero-dock');
+        dock.innerHTML = ''; // 清空避免重复
+
+        entities.forEach(e => {
+            if (e.type === 'HERO' && e.team === 'BLUE') {
+                let btn = document.createElement('div');
+                btn.className = 'round-btn hero-btn';
+                // 初始显示分路首字母
+                btn.innerHTML = `<span class="hero-txt">${e.lane[0]}</span><div class="mp-fill" id="mp-${e.id}"></div>`;
+                btn.onclick = () => e.castUltimate();
+                dock.appendChild(btn);
+                e.uiBtn = btn;
+            }
+        });
+    }
+
+    function updateUI() {
+        entities.forEach(e => {
+            if (e.uiBtn) {
+                let fill = e.uiBtn.querySelector('.mp-fill');
+                if (fill) fill.style.height = `${e.mp}%`;
+
+                // 能量满特效
+                if (e.mp >= 100) e.uiBtn.classList.add('ready');
+                else e.uiBtn.classList.remove('ready');
+
+                // 🔥 核心逻辑：重生倒计时显示
+                let txtSpan = e.uiBtn.querySelector('.hero-txt');
+                if (txtSpan) {
+                    if (e.dead || e.state === 'RESPAWNING') {
+                        // 显示剩余秒数 (向上取整)
+                        txtSpan.innerText = Math.ceil(e.respawnTimer);
+                        txtSpan.style.color = '#ff4444'; // 红色醒目
+                    } else {
+                        // 活着的时候显示分路
+                        txtSpan.innerText = e.lane[0];
+                        txtSpan.style.color = 'white';
+                    }
+                }
+            }
+        });
+
+        let bBase = buildings.find(b=>b.type==='BASE'&&b.team==='BLUE');
+        let rBase = buildings.find(b=>b.type==='BASE'&&b.team==='RED');
+        if(bBase) document.getElementById('hp-blue').innerText = Math.floor(bBase.hp);
+        if(rBase) document.getElementById('hp-red').innerText = Math.floor(rBase.hp);
+    }
+
     function initGame() {
         width = window.innerWidth; height = window.innerHeight;
         MAP.BLUE_BASE = { x: 100, y: height - 100 }; MAP.RED_BASE = { x: width - 100, y: 100 }; MAP.LANES = { TOP_LEFT: { x: 100, y: 100 }, BOT_RIGHT: { x: width - 100, y: height - 100 } };
@@ -764,18 +892,48 @@
         buildings.push(new Building(MAP.RED_BASE.x, MAP.RED_BASE.y, 'RED', 'BASE', 'ALL'));
 
         let midX = (MAP.BLUE_BASE.x+MAP.RED_BASE.x)/2, midY = (MAP.BLUE_BASE.y+MAP.RED_BASE.y)/2;
-        buildings.push(new Building(midX-120, midY+120, 'BLUE', 'TOWER', 'MID'));
-        buildings.push(new Building(midX+120, midY-120, 'RED', 'TOWER', 'MID'));
+        buildings.push(new Building(midX-160, midY+160, 'BLUE', 'TOWER', 'MID'));
+        buildings.push(new Building(midX+160, midY-160, 'RED', 'TOWER', 'MID'));
 
-        buildings.push(new Building(50, 300, 'BLUE', 'TOWER', 'TOP'));
-        buildings.push(new Building(300, 50, 'RED', 'TOWER', 'TOP'));
+        buildings.push(new Building(50, 350, 'BLUE', 'TOWER', 'TOP'));
+        buildings.push(new Building(450, 50, 'RED', 'TOWER', 'TOP'));
 
-        buildings.push(new Building(width-300, height-50, 'BLUE', 'TOWER', 'BOT'));
-        buildings.push(new Building(width-50, height-300, 'RED', 'TOWER', 'BOT'));
+        buildings.push(new Building(width-350, height-50, 'BLUE', 'TOWER', 'BOT'));
+        buildings.push(new Building(width-50, height-450, 'RED', 'TOWER', 'BOT'));
 
-        let lanes = ['TOP','TOP','MID','BOT','BOT']; let uid = 0; lanes.forEach(l => { let bPos = getSpawnPoint('BLUE', l); entities.push(new Unit(uid++, bPos.x, bPos.y, 'BLUE', 'HERO', l)); let rPos = getSpawnPoint('RED', l); entities.push(new Unit(uid++, rPos.x, rPos.y, 'RED', 'HERO', l)); }); initUI(); spawnMinions(); requestAnimationFrame(loop);
+        // 🔥 1. 先刷小兵
+        spawnMinions();
+
+        // 🔥 2. 后刷英雄 (带延迟)
+        let lanes = ['MID','TOP','TOP','BOT','BOT'];
+        let uid = 0;
+        lanes.forEach((l, index) => {
+            let bPos = getSpawnPoint('BLUE', l);
+            let bHero = new Unit(uid++, bPos.x, bPos.y, 'BLUE', 'HERO', l);
+            bHero.state = 'RESPAWNING';
+            bHero.respawnTimer = 1.5 + index * 1.5;
+            entities.push(bHero);
+
+            let rPos = getSpawnPoint('RED', l);
+            let rHero = new Unit(uid++, rPos.x, rPos.y, 'RED', 'HERO', l);
+            rHero.state = 'RESPAWNING';
+            rHero.respawnTimer = 1.5 + index * 1.5;
+            entities.push(rHero);
+        });
+
+        initUI();
+        requestAnimationFrame(loop);
     }
-    function loop(timestamp) { let rawDt = (timestamp - lastTime)/1000; lastTime = timestamp; if(rawDt > 0.1 || isNaN(rawDt)) rawDt = 0.016; let dt = IS_PAUSED ? 0 : rawDt * TIME_SCALE; if (!isGameOver) { if (!IS_PAUSED) { waveTimer -= dt; if(waveTimer <= 0) { spawnMinions(); waveTimer = SPAWN_INTERVAL; } document.getElementById('wave-timer').innerText = waveTimer.toFixed(1); resolveCollisions(); resolveCollisions(); } [...entities, ...buildings, ...projectiles, ...particles].forEach(e => e.update(dt)); if (!IS_PAUSED) { entities = entities.filter(e => e.type === 'HERO' || !e.dead); buildings = buildings.filter(b => !b.dead); projectiles = projectiles.filter(p => !p.hit); particles = particles.filter(p => p.life > 0); updateUI(); } } renderer.render(scene, camera); requestAnimationFrame(loop); }
+    function loop(timestamp) { let rawDt = (timestamp - lastTime)/1000; lastTime = timestamp; if(rawDt > 0.1 || isNaN(rawDt)) rawDt = 0.016; let dt = IS_PAUSED ? 0 : rawDt * TIME_SCALE; if (!isGameOver) { if (!IS_PAUSED) { waveTimer -= dt; if(waveTimer <= 0) { spawnMinions(); waveTimer = SPAWN_INTERVAL; } document.getElementById('wave-timer').innerText = waveTimer.toFixed(1); resolveCollisions(); resolveCollisions(); }
+        [...entities, ...buildings, ...projectiles, ...particles].forEach(e => e.update(dt));
+        if (!IS_PAUSED) {
+            entities = entities.filter(e => e.type === 'HERO' || !e.dead);
+            buildings = buildings.filter(b => !b.dead);
+            projectiles = projectiles.filter(p => !p.hit);
+            particles = particles.filter(p => p.life > 0);
+            updateUI();
+        }
+    } renderer.render(scene, camera); requestAnimationFrame(loop); }
     window.onresize = () => { width = window.innerWidth; height = window.innerHeight; let centerX = width/2, centerZ = height/2; let scale = Math.max(width, height) / 700; camera.aspect = width / height; camera.updateProjectionMatrix(); camera.position.set(centerX - 200 * scale, 450 * scale, centerZ + 600 * scale); camera.lookAt(centerX, 0, centerZ); renderer.setSize(width, height); }; initGame();
 
 </script>
