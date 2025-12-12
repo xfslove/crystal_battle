@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Soul Hunters: Map Boundaries</title>
+    <title>Soul Hunters: Crash Fix</title>
     <style>
         body { margin: 0; background: #222; overflow: hidden; font-family: 'Consolas', monospace; user-select: none; }
         #game-stage { position: relative; width: 100vw; height: 100vh; }
@@ -10,18 +10,26 @@
 
         /* HUD */
         #ui-layer { position: absolute; top: 10px; width: 100%; pointer-events: none; z-index: 10; display: flex; justify-content: center; align-items: flex-start; }
+
+        /* 顶部控制栏容器 */
+        .top-bar { display: flex; gap: 20px; align-items: center; pointer-events: auto; }
+
         .score-board {
-            background: rgba(0,0,0,0.7); color: white; padding: 10px 30px; border-radius: 5px;
-            font-size: 20px; border: 1px solid #555; text-align: center;
+            background: rgba(0,0,0,0.7); color: white; padding: 8px 25px; border-radius: 5px;
+            font-size: 20px; border: 1px solid #555; text-align: center; min-width: 200px;
         }
         .blue { color: #44aaff; } .red { color: #ff4444; }
 
-        #debug-btn {
-            position: absolute; top: 10px; right: 10px; pointer-events: auto;
-            background: #333; color: #aaa; border: 1px solid #555; padding: 5px 10px;
-            cursor: pointer; font-size: 12px; z-index: 20;
+        /* 控制按钮组 */
+        .ctrl-group { display: flex; gap: 5px; }
+        .ctrl-btn {
+            background: #333; color: #ccc; border: 1px solid #555; padding: 5px 12px;
+            cursor: pointer; font-size: 14px; border-radius: 4px; font-weight: bold;
+            transition: all 0.1s;
         }
-        #debug-btn.active { background: #004400; color: #0f0; border-color: #0f0; }
+        .ctrl-btn:hover { background: #444; color: white; }
+        .ctrl-btn.active { background: #006600; color: #0f0; border-color: #0f0; }
+        .ctrl-btn.paused { background: #666600; color: #ff0; border-color: #ff0; }
 
         /* 英雄操作栏 */
         #hero-dock {
@@ -57,14 +65,23 @@
     <canvas id="canvas"></canvas>
 
     <div id="ui-layer">
-        <div class="score-board">
-            <span class="blue">BLUE: <span id="hp-blue">...</span></span>
-            VS
-            <span class="red">RED: <span id="hp-red">...</span></span>
-            <br>
-            <span style="font-size:14px; color:#aaa">下一波兵线: <span id="wave-timer">--</span>s</span>
+        <div class="top-bar">
+            <div class="ctrl-group">
+                <button class="ctrl-btn" id="pause-btn" onclick="togglePause()">⏸️ 暂停</button>
+                <button class="ctrl-btn" id="speed-btn" onclick="toggleSpeed()">⏩ 1.0x</button>
+            </div>
+            <div class="score-board">
+                <span class="blue">BLUE: <span id="hp-blue">...</span></span>
+                VS
+                <span class="red">RED: <span id="hp-red">...</span></span>
+                <br>
+                <span style="font-size:14px; color:#aaa">下一波: <span id="wave-timer">--</span>s</span>
+            </div>
+            <div class="ctrl-group">
+                <button class="ctrl-btn" id="auto-btn" onclick="toggleAutoUlt()">🤖 自动大招</button>
+                <button class="ctrl-btn" id="debug-btn" onclick="toggleDebug()">🔳 Debug</button>
+            </div>
         </div>
-        <button id="debug-btn" onclick="toggleDebug()">🔳 Debug Colliders</button>
     </div>
 
     <div id="hero-dock"></div>
@@ -77,7 +94,7 @@
 
 <script>
     /**
-     * 引擎 V44: 地图边界限制 (World Boundaries)
+     * 引擎 V46: 修复 lastTime 未定义导致的黑屏 Bug
      */
 
     const canvas = document.getElementById('canvas');
@@ -96,23 +113,59 @@
     let floatingTexts = [];
     let waveTimer = SPAWN_INTERVAL;
     let isGameOver = false;
+
+    // 🔥 修复：补回 lastTime 变量
+    let lastTime = 0;
+
+    // 游戏状态控制变量
     let DEBUG_MODE = false;
+    let IS_PAUSED = false;
+    let TIME_SCALE = 1.0;
+    let PLAYER_AUTO_ULT = false;
 
     let MAP = { BLUE_BASE: {}, RED_BASE: {}, LANES: {} };
 
+    // --- 控制函数 ---
     function toggleDebug() {
         DEBUG_MODE = !DEBUG_MODE;
         const btn = document.getElementById('debug-btn');
-        if(DEBUG_MODE) btn.classList.add('active');
-        else btn.classList.remove('active');
+        if(DEBUG_MODE) btn.classList.add('active'); else btn.classList.remove('active');
+    }
+
+    function togglePause() {
+        IS_PAUSED = !IS_PAUSED;
+        const btn = document.getElementById('pause-btn');
+        if(IS_PAUSED) {
+            btn.classList.add('paused');
+            btn.innerText = "▶️ 继续";
+        } else {
+            btn.classList.remove('paused');
+            btn.innerText = "⏸️ 暂停";
+        }
+    }
+
+    function toggleSpeed() {
+        const btn = document.getElementById('speed-btn');
+        if (TIME_SCALE === 1.0) {
+            TIME_SCALE = 2.0;
+            btn.innerText = "⏩ 2.0x";
+            btn.classList.add('active');
+        } else {
+            TIME_SCALE = 1.0;
+            btn.innerText = "⏩ 1.0x";
+            btn.classList.remove('active');
+        }
+    }
+
+    function toggleAutoUlt() {
+        PLAYER_AUTO_ULT = !PLAYER_AUTO_ULT;
+        const btn = document.getElementById('auto-btn');
+        if(PLAYER_AUTO_ULT) btn.classList.add('active'); else btn.classList.remove('active');
     }
 
     function getSpawnPoint(team, lane) {
         let base = team === 'BLUE' ? MAP.BLUE_BASE : MAP.RED_BASE;
-        let x = base.x;
-        let y = base.y;
-        let offset = 50;
-
+        let x = base.x, y = base.y, offset = 50;
         if (team === 'BLUE') {
             if (lane === 'TOP') y -= offset;
             else if (lane === 'BOT') x += offset;
@@ -122,20 +175,16 @@
             else if (lane === 'BOT') y += offset;
             else { x -= offset*0.7; y += offset*0.7; }
         }
-
-        x += (Math.random() * 10 - 5);
-        y += (Math.random() * 10 - 5);
-
+        x += (Math.random() * 10 - 5); y += (Math.random() * 10 - 5);
         return { x, y };
     }
 
     function resolveCollisions() {
-        // 1. 单位互斥
         for (let i = 0; i < entities.length; i++) {
             let u1 = entities[i];
             if (u1.dead || u1.state === 'RESPAWNING') continue;
 
-            // 🔥 新增：地图边界限制 (空气墙)
+            // 边界限制
             if (u1.x < u1.radius) u1.x = u1.radius;
             if (u1.x > width - u1.radius) u1.x = width - u1.radius;
             if (u1.y < u1.radius) u1.y = u1.radius;
@@ -144,12 +193,9 @@
             for (let j = i + 1; j < entities.length; j++) {
                 let u2 = entities[j];
                 if (u2.dead || u2.state === 'RESPAWNING') continue;
-
-                let dx = u1.x - u2.x;
-                let dy = u1.y - u2.y;
+                let dx = u1.x - u2.x; let dy = u1.y - u2.y;
                 let distSq = dx*dx + dy*dy;
                 let minSep = u1.radius + u2.radius;
-
                 if (distSq < minSep * minSep && distSq > 0.01) {
                     let dist = Math.sqrt(distSq);
                     let overlap = minSep - dist;
@@ -160,8 +206,6 @@
                 }
             }
         }
-
-        // 2. 单位与建筑
         entities.forEach(u => {
             if (u.dead || u.state === 'RESPAWNING') return;
             buildings.forEach(b => {
@@ -188,7 +232,6 @@
         takeDamage(amount, isCrit) {
             if(this.dead) return;
             this.hp -= amount;
-
             if (this.type === 'HERO' || isCrit || this.hp <= 0) {
                 let color = isCrit ? '#ffd700' : '#fff';
                 let size = isCrit ? 24 : 14;
@@ -226,18 +269,12 @@
             if (this.dead) return;
             ctx.strokeStyle = this.team === 'BLUE' ? COLORS.BLUE : COLORS.RED;
             ctx.lineWidth = 3;
-            if (this.type === 'BASE') {
-                ctx.strokeRect(this.x - 30, this.y - 30, 60, 60);
-            } else {
-                ctx.beginPath(); ctx.moveTo(this.x, this.y-30); ctx.lineTo(this.x+30, this.y); ctx.lineTo(this.x, this.y+30); ctx.lineTo(this.x-30, this.y); ctx.closePath(); ctx.stroke();
-            }
+            if (this.type === 'BASE') { ctx.strokeRect(this.x - 30, this.y - 30, 60, 60); }
+            else { ctx.beginPath(); ctx.moveTo(this.x, this.y-30); ctx.lineTo(this.x+30, this.y); ctx.lineTo(this.x, this.y+30); ctx.lineTo(this.x-30, this.y); ctx.closePath(); ctx.stroke(); }
             let hpPct = this.hp / this.maxHp;
-            let barY = this.y - 45;
-            let barW = this.type === 'BASE' ? 60 : 40;
-            let barX = this.x - barW / 2;
+            let barY = this.y - 45; let barW = this.type === 'BASE' ? 60 : 40; let barX = this.x - barW / 2;
             ctx.fillStyle = '#333'; ctx.fillRect(barX, barY, barW, 6);
             ctx.fillStyle = '#0f0'; ctx.fillRect(barX, barY, barW * hpPct, 6);
-
             if (DEBUG_MODE) {
                 ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.stroke();
@@ -255,7 +292,6 @@
         constructor(id, x, y, team, type, lane) {
             super(x, y, team, type === 'HERO' ? 16 : 10);
             this.id = id; this.type = type; this.lane = lane;
-
             if (type === 'HERO') {
                 this.maxHp = 1200; this.atk = 100; this.speed = 60; this.range = 130;
                 this.mp = 0; this.maxMp = 100;
@@ -263,11 +299,7 @@
                 this.maxHp = 300; this.atk = 20; this.speed = 40; this.range = 45;
             }
             this.hp = this.maxHp;
-
-            this.state = 'MOVE';
-            this.respawnTimer = 0;
-            this.target = null;
-            this.atkTimer = 0;
+            this.state = 'MOVE'; this.respawnTimer = 0; this.target = null; this.atkTimer = 0;
             this.waypoints = this.getWaypoints(team, lane);
             this.wpIndex = 0;
             this.uiBtn = null;
@@ -291,9 +323,7 @@
             return path;
         }
 
-        getHitBox() {
-            return { x: this.x - this.collider.w / 2, y: this.y - this.collider.h, w: this.collider.w, h: this.collider.h };
-        }
+        getHitBox() { return { x: this.x - this.collider.w / 2, y: this.y - this.collider.h, w: this.collider.w, h: this.collider.h }; }
 
         update(dt) {
             if (this.state === 'RESPAWNING') {
@@ -304,8 +334,10 @@
             if (this.dead) return;
 
             if (this.type === 'HERO' && this.mp < 100) this.mp += dt * 8;
-            if (this.type === 'HERO' && !this.isPlayerControlled() && this.mp >= 100 && this.target) {
-                this.castUltimate();
+
+            let shouldAutoUlt = !this.isPlayerControlled() || PLAYER_AUTO_ULT;
+            if (this.type === 'HERO' && shouldAutoUlt && this.mp >= 100 && this.target) {
+                if(Math.random() < 0.05) this.castUltimate();
             }
 
             if (!this.target || this.target.dead || this.target.state === 'RESPAWNING') {
@@ -317,11 +349,7 @@
             if (this.target) {
                 let dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
                 let range = this.range + this.target.radius;
-
-                if (this.type === 'MINION' && dist > 250) {
-                    this.target = null; this.state = 'MOVE'; return;
-                }
-
+                if (this.type === 'MINION' && dist > 250) { this.target = null; this.state = 'MOVE'; return; }
                 if (dist <= range) {
                     this.atkTimer += dt;
                     if (this.atkTimer > 1.5) {
@@ -343,7 +371,6 @@
                     if (this.team === 'RED'  && this.x < wp0.x - 80) passed = true;
                     if (passed) this.wpIndex = 1;
                 }
-
                 if (this.wpIndex < this.waypoints.length) {
                     let wp = this.waypoints[this.wpIndex];
                     if (Math.hypot(wp.x - this.x, wp.y - this.y) < 20) this.wpIndex++;
@@ -383,19 +410,13 @@
         respawn() {
             this.dead = false; this.hp = this.maxHp; this.mp = 0;
             this.state = 'IDLE';
-
             this.lane = getBestLane(this.team);
             let spawnPos = getSpawnPoint(this.team, this.lane);
-
-            this.x = spawnPos.x;
-            this.y = spawnPos.y;
-
+            this.x = spawnPos.x; this.y = spawnPos.y;
             this.target = null;
             this.waypoints = this.getWaypoints(this.team, this.lane);
             this.wpIndex = 0;
-
             for(let i=0; i<10; i++) particles.push(new Particle(this.x, this.y, '#fff'));
-
             if(this.uiBtn) {
                 this.uiBtn.classList.remove('dead');
                 let txtSpan = this.uiBtn.querySelector('.hero-txt');
@@ -443,7 +464,6 @@
     function findNearestTarget(me, range) {
         let best = null; let minDist = range;
         let candidates = [...entities, ...buildings].filter(e => e.team !== me.team && !e.dead && e.state !== 'RESPAWNING');
-
         if (me.type === 'MINION') {
             candidates = candidates.filter(e => {
                 if (e instanceof Building) return true;
@@ -451,7 +471,6 @@
                 return false;
             });
         }
-
         candidates.forEach(t => {
             let d = Math.hypot(t.x - me.x, t.y - me.y);
             if (d < minDist) { minDist = d; best = t; }
@@ -501,10 +520,8 @@
 
     function spawnMinions() {
         ['TOP', 'MID', 'BOT'].forEach(lane => {
-            // 🔥 使用固定出生点
             let bPos = getSpawnPoint('BLUE', lane);
             entities.push(new Unit(-1, bPos.x, bPos.y, 'BLUE', 'MINION', lane));
-
             let rPos = getSpawnPoint('RED', lane);
             entities.push(new Unit(-1, rPos.x, rPos.y, 'RED', 'MINION', lane));
         });
@@ -560,10 +577,8 @@
         let lanes = ['TOP','TOP','MID','BOT','BOT'];
         let uid = 0;
         lanes.forEach(l => {
-            // 🔥 使用固定出生点
             let bPos = getSpawnPoint('BLUE', l);
             entities.push(new Unit(uid++, bPos.x, bPos.y, 'BLUE', 'HERO', l));
-
             let rPos = getSpawnPoint('RED', l);
             entities.push(new Unit(uid++, rPos.x, rPos.y, 'RED', 'HERO', l));
         });
@@ -574,7 +589,11 @@
     }
 
     function loop(timestamp) {
-        let dt = 0.016;
+        let rawDt = (timestamp - lastTime)/1000; lastTime = timestamp;
+        if(rawDt > 0.1) rawDt = 0.1;
+
+        let dt = IS_PAUSED ? 0 : rawDt * TIME_SCALE;
+
         ctx.fillStyle = '#222'; ctx.fillRect(0,0,width,height);
 
         ctx.strokeStyle = '#333'; ctx.lineWidth = 40; ctx.lineCap = 'round';
@@ -583,26 +602,29 @@
         ctx.beginPath(); ctx.moveTo(MAP.BLUE_BASE.x, MAP.BLUE_BASE.y); ctx.lineTo(MAP.LANES.BOT_RIGHT.x, MAP.LANES.BOT_RIGHT.y); ctx.lineTo(MAP.RED_BASE.x, MAP.RED_BASE.y); ctx.stroke();
 
         if (DEBUG_MODE) {
-            // 画出地图边界红框
             ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 2;
             ctx.strokeRect(0, 0, width, height);
         }
 
         if (!isGameOver) {
-            waveTimer -= dt;
-            if(waveTimer <= 0) { spawnMinions(); waveTimer = SPAWN_INTERVAL; }
-            document.getElementById('wave-timer').innerText = waveTimer.toFixed(1);
+            if (!IS_PAUSED) {
+                waveTimer -= dt;
+                if(waveTimer <= 0) { spawnMinions(); waveTimer = SPAWN_INTERVAL; }
+                document.getElementById('wave-timer').innerText = waveTimer.toFixed(1);
+                resolveCollisions();
+            }
 
-            resolveCollisions();
+            let updateList = [...entities, ...buildings, ...projectiles, ...particles, ...floatingTexts];
+            if (!IS_PAUSED) updateList.forEach(e => e.update(dt));
 
-            [...entities, ...buildings, ...projectiles, ...particles, ...floatingTexts].forEach(e => e.update(dt));
-
-            entities = entities.filter(e => e.type === 'HERO' || !e.dead);
-            buildings = buildings.filter(b => !b.dead);
-            projectiles = projectiles.filter(p => !p.hit);
-            particles = particles.filter(p => p.life > 0);
-            floatingTexts = floatingTexts.filter(t => t.life > 0);
-            updateUI();
+            if (!IS_PAUSED) {
+                entities = entities.filter(e => e.type === 'HERO' || !e.dead);
+                buildings = buildings.filter(b => !b.dead);
+                projectiles = projectiles.filter(p => !p.hit);
+                particles = particles.filter(p => p.life > 0);
+                floatingTexts = floatingTexts.filter(t => t.life > 0);
+                updateUI();
+            }
         }
 
         [...buildings, ...entities, ...projectiles, ...particles, ...floatingTexts].forEach(e => e.draw(ctx));
