@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Soul Hunters 3D: Steering & 3D Gizmos</title>
+    <title>Soul Hunters 3D</title>
     <style>
         body { margin: 0; background: #111; overflow: hidden; font-family: 'Consolas', monospace; user-select: none; }
         #game-stage { position: relative; width: 100vw; height: 100vh; }
@@ -72,7 +72,7 @@
             </div>
             <div class="ctrl-group">
                 <button class="ctrl-btn" id="auto-btn" onclick="toggleAutoUlt()">🤖 自动大招</button>
-                <button class="ctrl-btn" id="debug-btn" onclick="toggleDebug()">🔳 Debug</button>
+<!--                <button class="ctrl-btn" id="debug-btn" onclick="toggleDebug()">🔳 Debug</button>-->
             </div>
         </div>
     </div>
@@ -85,7 +85,10 @@
 
 <script>
     /**
-     * 引擎 V71: 智能避让与3D Debug (Steering Separation & 3D Gizmos)
+     * 引擎 V79: 流畅绕行优化 (Fluid Steering)
+     * 1. 弱化刹车：不再急停，而是尝试减速并侧滑。
+     * 2. 强化绕行：大幅增加侧向避让力，让单位“流”过障碍。
+     * 3. 物理层：保持 Unit-Unit 硬碰撞，防止穿模。
      */
 
 // ================= 全局变量 =================
@@ -115,11 +118,9 @@
     function getThreeColor(hexStr) { return new THREE.Color(hexStr); }
     const COLORS_3D = { BLUE: getThreeColor(COLORS.BLUE), RED: getThreeColor(COLORS.RED) };
 
-    // ================= 3D 引擎 =================
     function init3D() {
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a1a);
-
         let maxDim = Math.max(width, height);
         camera = new THREE.PerspectiveCamera(35, width / height, 10, 10000);
         let centerX = width / 2;
@@ -174,7 +175,6 @@
         }
     }
 
-    // ================= 游戏控制 =================
     function toggleDebug() { DEBUG_MODE = !DEBUG_MODE; document.getElementById('debug-btn').classList.toggle('active'); }
     function togglePause() { IS_PAUSED = !IS_PAUSED; const btn = document.getElementById('pause-btn'); btn.classList.toggle('paused'); btn.innerText = IS_PAUSED ? "▶️ 继续" : "⏸️ 暂停"; }
     function toggleSpeed() { TIME_SCALE = TIME_SCALE === 1.0 ? 2.0 : 1.0; const btn = document.getElementById('speed-btn'); btn.classList.toggle('active'); btn.innerText = TIME_SCALE === 2.0 ? "⏩ 2.0x" : "⏩ 1.0x"; }
@@ -184,53 +184,76 @@
         let base = team === 'BLUE' ? MAP.BLUE_BASE : MAP.RED_BASE;
         let x = base.x, y = base.y, offset = 50;
         if (team === 'BLUE') {
-            if (lane === 'TOP') y -= offset;
-            else if (lane === 'BOT') x += offset;
-            else { x += offset*0.7; y -= offset*0.7; }
+            if (lane === 'TOP') y -= offset; else if (lane === 'BOT') x += offset; else { x += offset*0.7; y -= offset*0.7; }
         } else {
-            if (lane === 'TOP') x -= offset;
-            else if (lane === 'BOT') y += offset;
-            else { x -= offset*0.7; y += offset*0.7; }
+            if (lane === 'TOP') x -= offset; else if (lane === 'BOT') y += offset; else { x -= offset*0.7; y += offset*0.7; }
         }
         x += (Math.random() * 10 - 5); y += (Math.random() * 10 - 5);
         return { x, y };
     }
 
-    // 🔥 物理引擎：只处理建筑硬阻挡 (单位互斥由移动逻辑中的“避让”处理)
+    // 物理引擎：保持硬碰撞以防止重叠
     function resolveCollisions() {
-        entities.forEach(u => {
-            if (u.dead || u.state === 'RESPAWNING') return;
+        for(let iter=0; iter<3; iter++) {
+            // 1. Unit vs Unit (Hard Collision)
+            for (let i = 0; i < entities.length; i++) {
+                let u1 = entities[i];
+                if (u1.dead || u1.state === 'RESPAWNING') continue;
+                if (u1.x < u1.physicsRadius) u1.x = u1.physicsRadius; if (u1.x > width - u1.physicsRadius) u1.x = width - u1.physicsRadius;
+                if (u1.y < u1.physicsRadius) u1.y = u1.physicsRadius; if (u1.y > height - u1.physicsRadius) u1.y = height - u1.physicsRadius;
 
-            // 边界限制
-            if (u.x < u.physicsRadius) u.x = u.physicsRadius; if (u.x > width - u.physicsRadius) u.x = width - u.physicsRadius;
-            if (u.y < u.physicsRadius) u.y = u.physicsRadius; if (u.y > height - u.physicsRadius) u.y = height - u.physicsRadius;
+                for (let j = i + 1; j < entities.length; j++) {
+                    let u2 = entities[j];
+                    if (u2.dead || u2.state === 'RESPAWNING') continue;
 
-            buildings.forEach(b => {
-                if (b.dead) return;
-                let halfW = b.collider.w / 2; let halfH = b.collider.h / 2;
-                let minX = b.x - halfW; let maxX = b.x + halfW;
-                let minY = b.y - halfH; let maxY = b.y + halfH;
-                let cx = Math.max(minX, Math.min(u.x, maxX));
-                let cy = Math.max(minY, Math.min(u.y, maxY));
-                let dx = u.x - cx; let dy = u.y - cy;
-                let distSq = dx*dx + dy*dy;
-                if (distSq < u.physicsRadius * u.physicsRadius) {
-                    let dist = Math.sqrt(distSq);
-                    if (dist > 0) {
-                        let overlap = u.physicsRadius - dist; let nx = dx / dist; let ny = dy / dist;
-                        u.x += nx * overlap; u.y += ny * overlap;
-                    } else {
-                        let dLeft = u.x - minX; let dRight = maxX - u.x; let dTop = u.y - minY; let dBottom = maxY - u.y;
-                        let minD = Math.min(dLeft, dRight, dTop, dBottom);
-                        const buffer = 0.5;
-                        if (minD === dLeft) u.x = minX - u.physicsRadius - buffer;
-                        else if (minD === dRight) u.x = maxX + u.physicsRadius + buffer;
-                        else if (minD === dTop) u.y = minY - u.physicsRadius - buffer;
-                        else u.y = maxY + u.physicsRadius + buffer;
+                    let dx = u1.x - u2.x;
+                    let dy = u1.y - u2.y;
+                    let distSq = dx*dx + dy*dy;
+                    let minSep = u1.physicsRadius + u2.physicsRadius;
+
+                    if (distSq < minSep * minSep && distSq > 0.001) {
+                        let dist = Math.sqrt(distSq);
+                        let overlap = minSep - dist;
+                        let push = overlap * 0.5;
+                        let nx = dx / dist;
+                        let ny = dy / dist;
+                        u1.x += nx * push; u1.y += ny * push;
+                        u2.x -= nx * push; u2.y -= ny * push;
                     }
                 }
+            }
+
+            // 2. Unit vs Building
+            entities.forEach(u => {
+                if (u.dead || u.state === 'RESPAWNING') return;
+                buildings.forEach(b => {
+                    if (b.dead) return;
+                    let halfW = b.collider.w / 2; let halfH = b.collider.h / 2;
+                    let minX = b.x - halfW; let maxX = b.x + halfW;
+                    let minY = b.y - halfH; let maxY = b.y + halfH;
+                    let cx = Math.max(minX, Math.min(u.x, maxX));
+                    let cy = Math.max(minY, Math.min(u.y, maxY));
+                    let dx = u.x - cx; let dy = u.y - cy;
+                    let distSq = dx*dx + dy*dy;
+                    if (distSq < u.physicsRadius * u.physicsRadius) {
+                        let dist = Math.sqrt(distSq);
+                        if (dist > 0) {
+                            let overlap = u.physicsRadius - dist;
+                            u.x += (dx / dist) * overlap;
+                            u.y += (dy / dist) * overlap;
+                        } else {
+                            let dLeft = u.x - minX; let dRight = maxX - u.x; let dTop = u.y - minY; let dBottom = maxY - u.y;
+                            let minD = Math.min(dLeft, dRight, dTop, dBottom);
+                            const buffer = 0.5;
+                            if (minD === dLeft) u.x = minX - u.physicsRadius - buffer;
+                            else if (minD === dRight) u.x = maxX + u.physicsRadius + buffer;
+                            else if (minD === dTop) u.y = minY - u.physicsRadius - buffer;
+                            else u.y = maxY + u.physicsRadius + buffer;
+                        }
+                    }
+                });
             });
-        });
+        }
     }
 
     function createVFX(type, x, y, color) {
@@ -247,16 +270,19 @@
         }
     }
 
-    // 智能索敌
     function findSmartTarget(me, range) {
         let candidates = [...entities, ...buildings].filter(e => e.team !== me.team && !e.dead && e.state !== 'RESPAWNING');
-        let inRange = candidates.filter(e => Math.hypot(e.x - me.x, e.y - me.y) <= range);
+
+        let inRange = candidates.filter(e => {
+            let dist = Math.hypot(e.x - me.x, e.y - me.y);
+            let targetRadius = e.physicsRadius || (e.collider ? e.collider.w/2 : 20);
+            return dist <= range + targetRadius;
+        });
+
         if (inRange.length === 0) return null;
         let units = inRange.filter(e => e instanceof Unit);
         let structs = inRange.filter(e => e instanceof Building);
-        if (units.length > 0) {
-            return units.sort((a,b) => Math.hypot(a.x-me.x, a.y-me.y) - Math.hypot(b.x-me.x, b.y-me.y))[0];
-        }
+        if (units.length > 0) return units.sort((a,b) => Math.hypot(a.x-me.x, a.y-me.y) - Math.hypot(b.x-me.x, b.y-me.y))[0];
         return structs.sort((a,b) => Math.hypot(a.x-me.x, a.y-me.y) - Math.hypot(b.x-me.x, b.y-me.y))[0];
     }
 
@@ -270,6 +296,7 @@
             this.hp = 100; this.maxHp = 100; this.dead = false;
             this.mesh = null; this.hpBarGroup = null; this.hpBarFill = null;
             this.debugGroup = null;
+            this.steeringForce = { x: 0, y: 0 };
         }
 
         sync3D() {
@@ -279,7 +306,7 @@
             if(this.hpBarGroup) this.hpBarGroup.visible = visible;
             if(this.debugGroup) {
                 this.debugGroup.visible = visible && DEBUG_MODE;
-                if(visible) this.debugGroup.position.set(this.x, 0, this.y); // 基座在地面
+                if(visible) this.debugGroup.position.set(this.x, 2, this.y);
             }
             if (visible) {
                 this.mesh.position.set(this.x, this.mesh.userData.yOffset || 0, this.y);
@@ -309,36 +336,28 @@
             scene.add(this.hpBarGroup);
         }
 
-        // 🔥 Debug 3D 线框生成
-        createDebug3D(radius, height, isBox=false, attackRange=0) {
+        createDebugVisuals(height, attackRange) {
             this.debugGroup = new THREE.Group();
-            let geo, color = 0x00ff00; // 默认绿色
-
-            if (isBox) {
-                // 建筑：方形线框 (青色)
-                geo = new THREE.BoxGeometry(radius, height, radius); // radius这里是传的 collider.w
+            let geo, color = 0x00ff00;
+            if (this.collider && this.collider.type === 'BOX') {
+                geo = new THREE.BoxGeometry(this.collider.w, height, this.collider.h);
                 color = 0x00ffff;
             } else {
-                // 单位：圆柱线框 (绿色)
-                geo = new THREE.CylinderGeometry(radius, radius, height, 16);
+                geo = new THREE.CylinderGeometry(this.physicsRadius, this.physicsRadius, height, 16);
             }
-
             const edges = new THREE.EdgesGeometry(geo);
             const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: color }));
             line.position.y = height / 2;
             this.debugGroup.add(line);
 
-            // 攻击范围 (黄色地面圈)
             if (attackRange > 0) {
                 const curve = new THREE.EllipseCurve(0, 0, attackRange, attackRange, 0, 2 * Math.PI);
                 const pts = curve.getPoints(64);
                 const rngGeo = new THREE.BufferGeometry().setFromPoints(pts);
                 const rngLine = new THREE.Line(rngGeo, new THREE.LineBasicMaterial({ color: 0xffff00 }));
-                rngLine.rotation.x = -Math.PI / 2;
-                rngLine.position.y = 1;
+                rngLine.rotation.x = -Math.PI / 2; rngLine.position.y = 1;
                 this.debugGroup.add(rngLine);
             }
-
             scene.add(this.debugGroup);
         }
 
@@ -365,14 +384,15 @@
     class Building extends Entity {
         constructor(x, y, team, type, lane) {
             super(x, y, team, type === 'BASE' ? 35 : 20);
-            this.type = type;
-            this.lane = lane;
+            this.type = type; this.lane = lane;
             this.maxHp = type === 'BASE' ? 4000 : 1500; this.hp = this.maxHp;
             this.range = 160; this.atkDmg = 50; this.atkTimer = 0;
 
             this.visualSize = type === 'BASE' ? 60 : 40;
             this.visualHeight = type === 'BASE' ? 40 : 80;
-            this.collider = { w: this.visualSize * 1.3, h: this.visualSize * 1.3 };
+            this.collider = { type: 'BOX', w: this.visualSize * 1.3, h: this.visualSize * 1.3 };
+            this.physicsRadius = Math.sqrt(Math.pow(this.collider.w/2, 2) + Math.pow(this.collider.h/2, 2));
+
             this.createMesh();
         }
         createMesh() {
@@ -385,8 +405,7 @@
             this.mesh.castShadow = true; this.mesh.receiveShadow = true;
             scene.add(this.mesh);
             this.createHpBar(this.visualSize);
-            // 🔥 Debug: 显示3D方框
-            this.createDebug3D(this.collider.w, this.visualHeight, true, this.range);
+            this.createDebugVisuals(this.visualHeight, this.range);
             this.sync3D();
         }
         update(dt) {
@@ -413,6 +432,8 @@
             if (type === 'HERO') { this.maxHp = 1200; this.atk = 100; this.speed = 60; this.range = 130; this.mp = 0; this.maxMp = 100; }
             else { this.maxHp = 300; this.atk = 20; this.speed = 40; this.range = 45; }
             this.hp = this.maxHp;
+            this.collider = { type: 'CIRCLE', radius: this.physicsRadius };
+
             this.state = 'MOVE'; this.respawnTimer = 0; this.target = null; this.atkTimer = 0;
             this.waypoints = this.getWaypoints(team, lane); this.wpIndex = 0; this.uiBtn = null;
             this.facingAngle = 0;
@@ -446,8 +467,7 @@
 
             scene.add(this.mesh);
             this.createHpBar(r*2);
-            // 🔥 Debug: 显示3D圆柱
-            this.createDebug3D(this.physicsRadius, h, false, this.range);
+            this.createDebugVisuals(h, this.range);
             this.sync3D();
         }
 
@@ -493,8 +513,11 @@
 
             if (this.target) {
                 let dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
-                let range = this.range + this.target.physicsRadius;
+                let targetRad = this.target.physicsRadius || 20;
+                let range = this.range + targetRad + this.physicsRadius * 0.5;
+
                 if (this.type === 'MINION' && dist > 250) { this.target = null; this.state = 'MOVE'; return; }
+
                 if (dist <= range) {
                     this.atkTimer += dt;
                     this.facingAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
@@ -504,7 +527,10 @@
                         else this.target.takeDamage(dmg, isCrit);
                         this.atkTimer = 0; if(this.type === 'HERO') this.mp = Math.min(100, this.mp + 15);
                     }
-                } else { this.moveTowards(this.target.x, this.target.y, dt); }
+                    // 停止移动，不做 moveTowards
+                } else {
+                    this.moveTowards(this.target.x, this.target.y, dt);
+                }
             } else {
                 if (this.lane !== 'MID' && this.wpIndex === 0 && this.waypoints.length > 1) {
                     let wp0 = this.waypoints[0];
@@ -523,50 +549,94 @@
             this.sync3D();
         }
 
-        // 🔥 核心：移动 + 智能避让
+        // 优化后的移动逻辑：流体绕行 + 侧向滑步
         moveTowards(tx, ty, dt) {
-            // 1. 目标方向向量
             let dx = tx - this.x;
             let dy = ty - this.y;
             let dist = Math.hypot(dx, dy);
             if(dist === 0) return;
 
+            // 1. 原始意图：直奔目标
             let moveX = (dx / dist);
             let moveY = (dy / dist);
 
-            // 2. 避让向量 (Steering Separation)
-            let sepX = 0, sepY = 0, count = 0;
+            // 2. 避让力 (Steering)
+            let steerX = 0, steerY = 0;
+            let speedMod = 1.0; // 尽量保持全速，减少急刹车
+
             entities.forEach(other => {
                 if (other === this || other.dead || other.state === 'RESPAWNING') return;
+
                 let d = Math.hypot(this.x - other.x, this.y - other.y);
-                // 避让判定半径
-                let sepRad = this.physicsRadius + other.physicsRadius;
-                if (d < sepRad && d > 0) {
-                    // 向量指向反方向
-                    let pushX = (this.x - other.x) / d;
-                    let pushY = (this.y - other.y) / d;
-                    // 越近推力越大
-                    let weight = (sepRad - d) / sepRad;
-                    sepX += pushX * weight;
-                    sepY += pushY * weight;
-                    count++;
+                // 判定范围：比物理半径稍大一点即可，不用太大，否则反应过激
+                let detectionRange = (this.physicsRadius + other.physicsRadius) * 1.5;
+
+                if (d < detectionRange && d > 0) {
+                    // 指向对方的向量（归一化）
+                    let toOtherX = (other.x - this.x) / d;
+                    let toOtherY = (other.y - this.y) / d;
+
+                    // 斥力强度：越近越大
+                    let force = (detectionRange - d) / detectionRange;
+
+                    // 计算当前移动方向与对方方位的夹角 (Dot Product)
+                    let dot = moveX * toOtherX + moveY * toOtherY;
+
+                    if (dot > 0.6) {
+                        // 【情况A：正前方拥堵】 -> 产生强烈的侧向滑步力 (Tangent Force)
+                        // 这是一个简单且极有效的绕行技巧：根据相对位置计算切线方向
+                        // 如果对方略微在左，我就往右切；略微在右，我就往左切
+
+                        // 基础排斥 (不要撞上去)
+                        steerX -= toOtherX * force * 5.0;
+                        steerY -= toOtherY * force * 5.0;
+
+                        // 切向滑动 (关键优化：与其停下，不如横移)
+                        // 向量 (-y, x) 是逆时针90度，(y, -x) 是顺时针90度
+                        // 利用叉乘原理决定往哪边滑更顺
+                        let cross = moveX * toOtherY - moveY * toOtherX;
+                        if (cross > 0) {
+                            // 对方在左侧，往右滑
+                            steerX += toOtherY * force * 3.0;
+                            steerY += -toOtherX * force * 3.0;
+                        } else {
+                            // 对方在右侧，往左滑
+                            steerX += -toOtherY * force * 3.0;
+                            steerY += toOtherX * force * 3.0;
+                        }
+
+                        // 只有贴得极近时才轻微减速，保留动量
+                        if (d < (this.physicsRadius + other.physicsRadius) * 1.05) {
+                            speedMod = Math.min(speedMod, 0.5);
+                        }
+                    }
+                    else if (dot > -0.5) {
+                        // 【情况B：侧方或斜后方】 -> 轻微排斥，保持队形间距
+                        steerX -= toOtherX * force * 1.5;
+                        steerY -= toOtherY * force * 1.5;
+                    }
                 }
             });
 
-            if (count > 0) {
-                // 🔥 混合目标方向和避让方向 (避让权重设为 1.5，让它们更倾向于绕开)
-                moveX += sepX * 1.5;
-                moveY += sepY * 1.5;
+            // 3. 引入微量随机噪点 (Jitter)
+            // 这是防止“死锁”的神器，打破完美的数学对称性，让两个面对面的单位能错开
+            steerX += (Math.random() - 0.5) * 0.2;
+            steerY += (Math.random() - 0.5) * 0.2;
 
-                // 重新归一化
-                let moveLen = Math.hypot(moveX, moveY);
-                if (moveLen > 0) { moveX /= moveLen; moveY /= moveLen; }
+            // 4. 混合力场
+            let finalX = moveX + steerX;
+            let finalY = moveY + steerY;
+
+            // 归一化并应用
+            let finalLen = Math.hypot(finalX, finalY);
+            if (finalLen > 0.01) {
+                finalX /= finalLen;
+                finalY /= finalLen;
+
+                this.facingAngle = Math.atan2(finalY, finalX);
+                this.x += finalX * this.speed * dt * speedMod;
+                this.y += finalY * this.speed * dt * speedMod;
             }
-
-            // 3. 应用移动
-            this.facingAngle = Math.atan2(moveY, moveX);
-            this.x += moveX * this.speed * dt;
-            this.y += moveY * this.speed * dt;
         }
 
         sync3D() {
@@ -613,9 +683,7 @@
             const mat = new THREE.MeshBasicMaterial({ color: getThreeColor(this.color) });
             this.mesh = new THREE.Mesh(geo, mat);
             this.mesh.position.set(this.x, 20, this.y);
-            this.debugMesh = new THREE.Mesh(new THREE.SphereGeometry(6, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true }));
-            this.debugMesh.visible = false;
-            scene.add(this.mesh); scene.add(this.debugMesh);
+            scene.add(this.mesh);
         }
         update(dt) {
             if (this.hit) { if(this.mesh) this.dispose(); return; }
@@ -623,13 +691,9 @@
             let dx = this.target.x - this.x; let dy = this.target.y - this.y; let dist = Math.hypot(dx, dy);
             if (dist < 15) { this.hit = true; this.target.takeDamage(this.dmg, false); this.dispose(); }
             else { let angle = Math.atan2(dy, dx); this.x += Math.cos(angle) * this.speed * dt; this.y += Math.sin(angle) * this.speed * dt; }
-            if(this.mesh) {
-                this.mesh.position.set(this.x, 20, this.y);
-                this.debugMesh.position.copy(this.mesh.position);
-                this.debugMesh.visible = DEBUG_MODE;
-            }
+            if(this.mesh) this.mesh.position.set(this.x, 20, this.y);
         }
-        dispose() { if(this.mesh) { scene.remove(this.mesh); this.mesh = null; } if(this.debugMesh) { scene.remove(this.debugMesh); this.debugMesh = null; } }
+        dispose() { if(this.mesh) { scene.remove(this.mesh); this.mesh = null; } }
         draw(ctx) {}
     }
 
@@ -711,7 +775,7 @@
 
         let lanes = ['TOP','TOP','MID','BOT','BOT']; let uid = 0; lanes.forEach(l => { let bPos = getSpawnPoint('BLUE', l); entities.push(new Unit(uid++, bPos.x, bPos.y, 'BLUE', 'HERO', l)); let rPos = getSpawnPoint('RED', l); entities.push(new Unit(uid++, rPos.x, rPos.y, 'RED', 'HERO', l)); }); initUI(); spawnMinions(); requestAnimationFrame(loop);
     }
-    function loop(timestamp) { let rawDt = (timestamp - lastTime)/1000; lastTime = timestamp; if(rawDt > 0.1 || isNaN(rawDt)) rawDt = 0.016; let dt = IS_PAUSED ? 0 : rawDt * TIME_SCALE; if (!isGameOver) { if (!IS_PAUSED) { waveTimer -= dt; if(waveTimer <= 0) { spawnMinions(); waveTimer = SPAWN_INTERVAL; } document.getElementById('wave-timer').innerText = waveTimer.toFixed(1); resolveCollisions(); } [...entities, ...buildings, ...projectiles, ...particles].forEach(e => e.update(dt)); if (!IS_PAUSED) { entities = entities.filter(e => e.type === 'HERO' || !e.dead); buildings = buildings.filter(b => !b.dead); projectiles = projectiles.filter(p => !p.hit); particles = particles.filter(p => p.life > 0); updateUI(); } } renderer.render(scene, camera); requestAnimationFrame(loop); }
+    function loop(timestamp) { let rawDt = (timestamp - lastTime)/1000; lastTime = timestamp; if(rawDt > 0.1 || isNaN(rawDt)) rawDt = 0.016; let dt = IS_PAUSED ? 0 : rawDt * TIME_SCALE; if (!isGameOver) { if (!IS_PAUSED) { waveTimer -= dt; if(waveTimer <= 0) { spawnMinions(); waveTimer = SPAWN_INTERVAL; } document.getElementById('wave-timer').innerText = waveTimer.toFixed(1); resolveCollisions(); resolveCollisions(); } [...entities, ...buildings, ...projectiles, ...particles].forEach(e => e.update(dt)); if (!IS_PAUSED) { entities = entities.filter(e => e.type === 'HERO' || !e.dead); buildings = buildings.filter(b => !b.dead); projectiles = projectiles.filter(p => !p.hit); particles = particles.filter(p => p.life > 0); updateUI(); } } renderer.render(scene, camera); requestAnimationFrame(loop); }
     window.onresize = () => { width = window.innerWidth; height = window.innerHeight; let centerX = width/2, centerZ = height/2; let scale = Math.max(width, height) / 700; camera.aspect = width / height; camera.updateProjectionMatrix(); camera.position.set(centerX - 200 * scale, 450 * scale, centerZ + 600 * scale); camera.lookAt(centerX, 0, centerZ); renderer.setSize(width, height); }; initGame();
 
 </script>
