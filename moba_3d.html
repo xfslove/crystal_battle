@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Soul Hunters 3D: Final UI Polish</title>
+    <title>Soul Hunters 3D</title>
     <style>
         body { margin: 0; background: #111; overflow: hidden; font-family: 'Consolas', monospace; user-select: none; }
         #game-stage { position: relative; width: 100vw; height: 100vh; }
@@ -71,6 +71,10 @@
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 24px; z-index: 99; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 </head>
 <body>
 
@@ -99,7 +103,7 @@
 
         <div id="sys-dock">
             <div class="round-btn sys-btn" id="pause-btn" onclick="togglePause()" title="暂停/继续">暂停</div>
-            <div class="round-btn sys-btn" id="speed-btn" onclick="toggleSpeed()" title="变速">2x</div>
+            <div class="round-btn sys-btn" id="speed-btn" onclick="toggleSpeed()" title="变速">1x</div>
             <div class="round-btn sys-btn" id="auto-btn" onclick="toggleAutoUlt()" title="自动大招">自动</div>
         </div>
     </div>
@@ -111,9 +115,6 @@
 </div>
 
 <script>
-    /**
-     * 引擎 V84: UI 终极优化 (Restored Respawn Timer & Unified UI)
-     */
 
 // ================= 全局变量 =================
     const SPAWN_INTERVAL = 15.0;
@@ -139,6 +140,42 @@
     let width = window.innerWidth;
     let height = window.innerHeight;
 
+    // 🔥 新增：资源管理器
+    const loader = new THREE.GLTFLoader();
+    let ASSETS = {
+        HERO: null,
+        MINION: null,
+        TOWER: null
+    };
+
+    // 🔥 配置你的模型路径 (请确保文件在项目目录下)
+    const MODEL_URLS = {
+        HERO: './models/Ranger.gltf',   // 替换成你的文件名
+        MINION: './models/Monk.gltf', // 替换成你的文件名
+        TOWER: './models/Rogue.gltf'    // 替换成你的文件名
+    };
+
+    // 🔥 资源加载函数
+    function loadResources() {
+        return new Promise((resolve, reject) => {
+            const manager = new THREE.LoadingManager();
+
+            manager.onLoad = () => {
+                console.log('所有资源加载完毕!');
+                resolve(); // 通知游戏开始
+            };
+
+            const gltfLoader = new THREE.GLTFLoader(manager);
+
+            // 加载英雄
+            gltfLoader.load(MODEL_URLS.HERO, (gltf) => { ASSETS.HERO = gltf; });
+            // 加载小兵
+            gltfLoader.load(MODEL_URLS.MINION, (gltf) => { ASSETS.MINION = gltf; });
+            // 加载塔
+            gltfLoader.load(MODEL_URLS.TOWER, (gltf) => { ASSETS.TOWER = gltf; });
+        });
+    }
+
     function getThreeColor(hexStr) { return new THREE.Color(hexStr); }
     const COLORS_3D = { BLUE: getThreeColor(COLORS.BLUE), RED: getThreeColor(COLORS.RED) };
 
@@ -160,8 +197,15 @@
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.getElementById('game-stage').appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xaaaaaa, 0.6);
+        // 1. 环境光 (稍微调亮一点，从 0.6 -> 0.8)
+        const ambientLight = new THREE.AmbientLight(0xaaaaaa, 1);
         scene.add(ambientLight);
+
+        // 🔥 2. 新增：半球光 (解决模型死黑的关键)
+        // 参数：天空颜色(白色), 地面颜色(深灰), 强度(0.6)
+        // const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        // hemiLight.position.set(0, 500, 0);
+        // scene.add(hemiLight);
 
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
         dirLight.position.set(centerX - 500, 1500, centerZ + 500);
@@ -209,13 +253,13 @@
         IS_PAUSED = !IS_PAUSED;
         const btn = document.getElementById('pause-btn');
         btn.classList.toggle('paused');
-        btn.innerText = IS_PAUSED ? "▶️" : "⏸️";
+        btn.innerText = IS_PAUSED ? "继续" : "暂停";
     }
     function toggleSpeed() {
         TIME_SCALE = TIME_SCALE === 1.0 ? 2.0 : 1.0;
         const btn = document.getElementById('speed-btn');
         btn.classList.toggle('active');
-        btn.innerText = TIME_SCALE === 2.0 ? "⏩" : "⏩";
+        btn.innerText = TIME_SCALE === 2.0 ? "2x" : "1x";
     }
     function toggleAutoUlt() {
         PLAYER_AUTO_ULT = !PLAYER_AUTO_ULT;
@@ -460,13 +504,68 @@
             this.createMesh();
         }
         createMesh() {
-            const color = this.team === 'BLUE' ? COLORS_3D.BLUE : COLORS_3D.RED;
-            const geo = new THREE.BoxGeometry(this.visualSize, this.visualHeight, this.visualSize);
-            const mat = new THREE.MeshPhongMaterial({ color: color });
-            this.mesh = new THREE.Mesh(geo, mat);
-            this.mesh.userData.yOffset = this.visualHeight / 2;
-            this.mesh.userData.height = this.visualHeight;
-            this.mesh.castShadow = true; this.mesh.receiveShadow = true;
+            // 资源检查
+            if (!ASSETS.TOWER) {
+                // 回退到简单的方块
+                const color = this.team === 'BLUE' ? COLORS_3D.BLUE : COLORS_3D.RED;
+                const geo = new THREE.BoxGeometry(this.visualSize, this.visualHeight, this.visualSize);
+                this.mesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: color }));
+                this.mesh.position.y = this.visualHeight / 2;
+                scene.add(this.mesh);
+                this.createHpBar(this.visualSize);
+                this.createDebugVisuals(this.visualHeight, this.range);
+                this.sync3D();
+                return;
+            }
+
+            // 1. 克隆模型
+            this.mesh = ASSETS.TOWER.scene.clone();
+
+            // 2. 缩放 (根据你的塔模型大小调整，通常建筑要很大)
+            let scale = 30.0;
+            this.mesh.scale.set(scale, scale, scale);
+
+            // 3. 材质修正与染色 (解决变黑问题的核心)
+            const teamColor = this.team === 'BLUE' ? 0x44aaff : 0xff4444;
+
+            this.mesh.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+
+                    // 定义材质处理函数 (与 Unit 保持一致)
+                    const processMaterial = (originalMat) => {
+                        const mat = originalMat.clone();
+
+                        // 🔥 核心修复：去除金属感
+                        if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
+                            mat.metalness = 0.0;
+                            mat.roughness = 0.8;
+                            mat.envMapIntensity = 0.0;
+                        }
+
+                        // 染色逻辑
+                        if (mat.emissive) {
+                            mat.emissive.setHex(teamColor);
+                            mat.emissiveIntensity = 0.4; // 增加亮度
+                        } else if (mat.color) {
+                            // 如果没有贴图，直接染色；如果有贴图，可以尝试混合颜色或不改
+                            if (!mat.map) {
+                                mat.color.setHex(teamColor);
+                            }
+                        }
+                        return mat;
+                    };
+
+                    // 处理多材质情况
+                    if (Array.isArray(child.material)) {
+                        child.material = child.material.map(m => processMaterial(m));
+                    } else if (child.material) {
+                        child.material = processMaterial(child.material);
+                    }
+                }
+            });
+
             scene.add(this.mesh);
             this.createHpBar(this.visualSize);
             this.createDebugVisuals(this.visualHeight, this.range);
@@ -505,35 +604,103 @@
             this.facingAngle = 0;
             this.createMesh();
         }
+
         createMesh() {
-            const color = this.team === 'BLUE' ? COLORS_3D.BLUE : COLORS_3D.RED;
-            const r = this.radius;
-            const h = this.type === 'HERO' ? 40 : 25;
-            const geo = new THREE.CylinderGeometry(r, r, h, 16);
-            const mat = new THREE.MeshPhongMaterial({ color: color });
-            this.mesh = new THREE.Mesh(geo, mat);
-            this.mesh.userData.yOffset = h / 2;
-            this.mesh.userData.height = h;
-            this.mesh.castShadow = true; this.mesh.receiveShadow = true;
+            let source = this.type === 'HERO' ? ASSETS.HERO : ASSETS.MINION;
 
-            const noseGeo = new THREE.BoxGeometry(r/2, r/2, r);
-            const noseMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const nose = new THREE.Mesh(noseGeo, noseMat);
-            nose.position.set(0, h/4, r);
-            this.mesh.add(nose);
+            if (!source) {
+                // 回退逻辑...
+                const geo = new THREE.CylinderGeometry(this.radius, this.radius, 20, 16);
+                this.mesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: this.team === 'BLUE' ? 0x0000ff : 0xff0000 }));
+                scene.add(this.mesh);
+                this.createHpBar(this.radius * 2);
+                this.createDebugVisuals(20, this.range);
+                this.sync3D();
+                return;
+            }
 
-            if (this.type === 'HERO') {
-                const ringGeo = new THREE.TorusGeometry(r+2, 1, 16, 32);
-                ringGeo.rotateX(Math.PI/2);
-                const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
-                this.ringMesh = new THREE.Mesh(ringGeo, ringMat);
-                this.ringMesh.position.y = -h/2 + 1;
-                this.mesh.add(this.ringMesh);
+            this.mesh = THREE.SkeletonUtils.clone(source.scene);
+
+            // 🔥 1. 修复单位太小：大幅增加缩放倍数
+            // 之前是 4.0 / 2.5，现在改为 8.0 / 5.0 (根据实际观感可微调)
+            let scale = this.type === 'HERO' ? 18.0 : 15.0;
+            this.mesh.scale.set(scale, scale, scale);
+
+            // 队伍染色
+            // 4. 队伍染色与材质修正 (修复模型变黑)
+            const teamColor = this.team === 'BLUE' ? 0x44aaff : 0xff4444;
+
+            this.mesh.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+
+                    // 定义材质处理函数
+                    const processMaterial = (originalMat) => {
+                        const mat = originalMat.clone();
+
+                        // 🔥 核心修复：强制去除金属感，防止变黑
+                        if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
+                            mat.metalness = 0.0; // 设为非金属
+                            mat.roughness = 0.8; // 设为粗糙，减少反光
+                            mat.envMapIntensity = 0.0; // 禁用环境反射
+                        }
+
+                        // 染色逻辑：混合队伍颜色
+                        if (mat.emissive) {
+                            mat.emissive.setHex(teamColor);
+                            mat.emissiveIntensity = 0.4; // 稍微亮一点
+                        } else if (mat.color) {
+                            // 如果有贴图(map)，不要直接覆盖 color，否则贴图会丢
+                            // 这里我们只在没有贴图时覆盖颜色，或者用 emissive 染色
+                            if (!mat.map) {
+                                mat.color.setHex(teamColor);
+                            }
+                        }
+                        return mat;
+                    };
+
+                    // 处理多材质情况
+                    if (Array.isArray(child.material)) {
+                        child.material = child.material.map(m => processMaterial(m));
+                    } else if (child.material) {
+                        child.material = processMaterial(child.material);
+                    }
+                }
+            });
+
+            // 动画系统
+            this.mixer = new THREE.AnimationMixer(this.mesh);
+            this.animations = {};
+
+            if (source.animations && source.animations.length > 0) {
+                const findClip = (nameList) => {
+                    for (let name of nameList) {
+                        let clip = source.animations.find(c => c.name.toLowerCase().includes(name));
+                        if (clip) return clip;
+                    }
+                    return null;
+                };
+
+                let idleClip = findClip(['idle', 'stand', 'wait']) || source.animations[0];
+                let runClip = findClip(['run', 'walk', 'move', 'charge']) || idleClip;
+                let attackClip = findClip(['shoot','attack', 'hit', 'slash', 'fight']) || runClip;
+
+                debugger
+                this.animations['Idle'] = this.mixer.clipAction(idleClip);
+                this.animations['Run'] = this.mixer.clipAction(runClip);
+                this.animations['Attack'] = this.mixer.clipAction(attackClip);
+
+                // 🔥 关键：设置 Attack 动画的时间比例，让它打快一点，更有打击感
+                this.animations['Attack'].setEffectiveTimeScale(0.5);
+
+                this.animations['Idle'].play();
+                this.currentAction = 'Idle';
             }
 
             scene.add(this.mesh);
-            this.createHpBar(r*2);
-            this.createDebugVisuals(h, this.range);
+            this.createHpBar(this.radius * 2);
+            this.createDebugVisuals(40, this.range);
             this.sync3D();
         }
 
@@ -546,53 +713,41 @@
         }
 
         update(dt) {
-            if (this.state === 'RESPAWNING') { this.respawnTimer -= dt; if (this.respawnTimer <= 0) this.respawn(); this.sync3D(); return; }
+            if (this.state === 'RESPAWNING') {
+                this.respawnTimer -= dt;
+                if (this.respawnTimer <= 0) this.respawn();
+                this.sync3D();
+                return;
+            }
             if (this.dead) { this.sync3D(); return; }
 
-            if (this.type === 'HERO' && this.mp < 100) this.mp += dt * 8;
-            let isPlayer = (this.team === 'BLUE');
-            let shouldAutoUlt = !isPlayer || PLAYER_AUTO_ULT;
-            if (this.type === 'HERO' && shouldAutoUlt && this.mp >= 100 && this.target) { if(Math.random() < 0.05) this.castUltimate(); }
-
             if (this.type === 'HERO') {
-                let myBase = buildings.find(b => b.type === 'BASE' && b.team === this.team);
-                let enemiesAtBase = entities.some(e => e.team !== this.team && !e.dead && Math.hypot(e.x - myBase.x, e.y - myBase.y) < 400);
-                if (enemiesAtBase) {
-                    let targetAtBase = findSmartTarget(myBase, 400);
-                    if (targetAtBase) { this.target = targetAtBase; }
-                    else { this.target = null; this.moveTowards(myBase.x, myBase.y, dt); this.sync3D(); return; }
-                }
+                if (this.mp < 100) this.mp += dt * 8;
+                let isPlayer = (this.team === 'BLUE');
+                let shouldAutoUlt = !isPlayer || PLAYER_AUTO_ULT;
+                if (shouldAutoUlt && this.mp >= 100 && this.target) { if(Math.random() < 0.05) this.castUltimate(); }
             }
 
+            // 索敌 (保持 V86 逻辑)
             if (!this.target || this.target.dead || this.target.state === 'RESPAWNING') {
                 let searchRange = 280;
                 if (this.type === 'MINION') searchRange = 180;
                 else if (this.wpIndex === 0 && this.lane !== 'MID') searchRange = 200;
-
-                // 🔥 核心修复：计算分路约束
                 let laneConstraint = null;
-
                 if (this.type === 'HERO') {
-                    // 如果是英雄，检查本路敌方塔是否还活着
                     let enemyTower = buildings.find(b => b.team !== this.team && b.type === 'TOWER' && b.lane === this.lane && !b.dead);
-                    if (enemyTower) {
-                        // 塔还在，处于对线期 -> 强制锁死在本路，不许去打隔壁路的小兵
-                        laneConstraint = this.lane;
-                    }
-                } else if (this.type === 'MINION') {
-                    // 小兵永远锁死在本路
-                    laneConstraint = this.lane;
-                }
-
-                // 传入约束条件进行搜索
+                    if (enemyTower) laneConstraint = this.lane;
+                } else if (this.type === 'MINION') laneConstraint = this.lane;
                 this.target = findSmartTarget(this, searchRange, laneConstraint);
-
-                // 只有当没有约束（塔掉了）且没目标时，才开启全图游走
                 if (this.type === 'HERO' && !this.target && !laneConstraint) {
                     let roamTarget = findSmartTarget(this, 2000);
                     if(roamTarget) this.target = roamTarget;
                 }
             }
+
+            // 状态标记
+            let isMoving = false;
+            let isAttacking = false; // 🔥 新增：攻击状态标记
 
             if (this.target) {
                 let dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
@@ -602,13 +757,17 @@
                 if (this.type === 'MINION' && dist > 250) { this.target = null; this.state = 'MOVE'; return; }
 
                 if (dist <= range) {
+                    // 🔥 标记：正在攻击
+                    isAttacking = true;
                     this.atkTimer += dt;
+
+                    // 始终面向目标
                     this.facingAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+
                     if (this.atkTimer > 1.5) {
                         let isCrit = Math.random() < 0.2; let dmg = this.atk * (isCrit ? 2.0 : 1.0);
-                        if (this.range > 50) {
-                            projectiles.push(new Projectile(this.x, this.y, this.target, dmg, '#fff'));
-                        } else {
+                        if (this.range > 50) projectiles.push(new Projectile(this.x, this.y, this.target, dmg, '#fff'));
+                        else {
                             this.target.takeDamage(dmg, isCrit);
                             createVFX('SLASH', this.x, this.y, '#fff', this.facingAngle);
                         }
@@ -616,6 +775,7 @@
                     }
                 } else {
                     this.moveTowards(this.target.x, this.target.y, dt);
+                    isMoving = true;
                 }
             } else {
                 if (this.lane !== 'MID' && this.wpIndex === 0 && this.waypoints.length > 1) {
@@ -629,9 +789,30 @@
                 }
                 if (this.wpIndex < this.waypoints.length) {
                     let wp = this.waypoints[this.wpIndex];
-                    if (Math.hypot(wp.x - this.x, wp.y - this.y) < 20) this.wpIndex++; else this.moveTowards(wp.x, wp.y, dt);
+                    if (Math.hypot(wp.x - this.x, wp.y - this.y) < 20) this.wpIndex++; else {
+                        this.moveTowards(wp.x, wp.y, dt);
+                        isMoving = true;
+                    }
                 }
             }
+
+            // 🔥 2. 修复动画逻辑：明确的优先级 Attack > Run > Idle
+            if (this.mixer) {
+                this.mixer.update(dt);
+
+                let desiredAction = 'Idle';
+                if (isAttacking) desiredAction = 'Attack'; // 攻击优先级最高
+                else if (isMoving) desiredAction = 'Run';  // 其次是移动
+
+                if (this.currentAction !== desiredAction && this.animations[desiredAction]) {
+                    if (this.animations[this.currentAction]) {
+                        this.animations[this.currentAction].fadeOut(0.2);
+                    }
+                    this.animations[desiredAction].reset().fadeIn(0.2).play();
+                    this.currentAction = desiredAction;
+                }
+            }
+
             this.sync3D();
         }
 
@@ -934,7 +1115,15 @@
             updateUI();
         }
     } renderer.render(scene, camera); requestAnimationFrame(loop); }
-    window.onresize = () => { width = window.innerWidth; height = window.innerHeight; let centerX = width/2, centerZ = height/2; let scale = Math.max(width, height) / 700; camera.aspect = width / height; camera.updateProjectionMatrix(); camera.position.set(centerX - 200 * scale, 450 * scale, centerZ + 600 * scale); camera.lookAt(centerX, 0, centerZ); renderer.setSize(width, height); }; initGame();
+    window.onresize = () => { width = window.innerWidth; height = window.innerHeight; let centerX = width/2, centerZ = height/2; let scale = Math.max(width, height) / 700; camera.aspect = width / height; camera.updateProjectionMatrix(); camera.position.set(centerX - 200 * scale, 450 * scale, centerZ + 600 * scale); camera.lookAt(centerX, 0, centerZ); renderer.setSize(width, height); };
+
+    // 🔥 等待资源加载完成后再启动游戏
+    loadResources().then(() => {
+        document.getElementById('loading').style.display = 'none'; // 隐藏加载字样
+        initGame();
+    }).catch(err => {
+        console.error("资源加载失败，请检查文件路径", err);
+    });
 
 </script>
 </body>
