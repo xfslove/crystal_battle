@@ -4,71 +4,243 @@
     <meta charset="UTF-8">
     <title>Soul Hunters 3D</title>
     <style>
-        body { margin: 0; background: #111; overflow: hidden; font-family: 'Consolas', monospace; user-select: none; }
-        #game-stage { position: relative; width: 100vw; height: 100vh; }
-        canvas { display: block; width: 100%; height: 100%; outline: none; }
+        body {
+            margin: 0;
+            background: #111;
+            overflow: hidden;
+            font-family: 'Consolas', monospace;
+            user-select: none;
+        }
+
+        #game-stage {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            outline: none;
+        }
 
         /* HUD - Top Layer */
-        #ui-layer { position: absolute; top: 10px; width: 100%; pointer-events: none; z-index: 10; display: flex; justify-content: center; align-items: flex-start; }
-        .top-bar { display: flex; width: 90%; justify-content: space-between; align-items: flex-start; pointer-events: auto; }
+        #ui-layer {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .top-bar {
+            display: flex;
+            width: 90%;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: auto;
+        }
 
         /* Score Board (Centered) */
         .score-board {
-            background: rgba(0,0,0,0.7); color: white; padding: 8px 25px; border-radius: 5px;
-            font-size: 20px; border: 1px solid #555; text-align: center; min-width: 200px;
-            position: absolute; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 25px;
+            border-radius: 5px;
+            font-size: 20px;
+            border: 1px solid #555;
+            text-align: center;
+            min-width: 200px;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
         }
-        .blue { color: #44aaff; } .red { color: #ff4444; }
+
+        .blue {
+            color: #44aaff;
+        }
+
+        .red {
+            color: #ff4444;
+        }
 
         /* Top Right Control (Debug) */
-        .top-right-ctrl { margin-left: auto; }
-        .ctrl-btn {
-            background: #333; color: #ccc; border: 1px solid #555; padding: 5px 12px;
-            cursor: pointer; font-size: 14px; border-radius: 4px; font-weight: bold; transition: all 0.1s;
+        .top-right-ctrl {
+            margin-left: auto;
         }
-        .ctrl-btn:hover { background: #444; color: white; }
-        .ctrl-btn.active { background: #006600; color: #0f0; border-color: #0f0; }
+
+        .ctrl-btn {
+            background: #333;
+            color: #ccc;
+            border: 1px solid #555;
+            padding: 5px 12px;
+            cursor: pointer;
+            font-size: 14px;
+            border-radius: 4px;
+            font-weight: bold;
+            transition: all 0.1s;
+        }
+
+        .ctrl-btn:hover {
+            background: #444;
+            color: white;
+        }
+
+        .ctrl-btn.active {
+            background: #006600;
+            color: #0f0;
+            border-color: #0f0;
+        }
 
         /* Bottom Dock (Hero Skills + System Buttons) */
         #bottom-panel {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 30px; z-index: 20; pointer-events: auto; align-items: center;
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 30px;
+            z-index: 20;
+            pointer-events: auto;
+            align-items: center;
         }
 
-        #hero-dock, #sys-dock { display: flex; gap: 15px; }
+        #hero-dock, #sys-dock {
+            display: flex;
+            gap: 15px;
+        }
 
         /* Circular Buttons (Shared Style) */
         .round-btn {
-            width: 60px; height: 60px; border-radius: 50%; border: 3px solid #555;
-            background: #333; color: white; font-weight: bold; font-size: 16px;
-            display: flex; justify-content: center; align-items: center; flex-direction: column;
-            cursor: pointer; transition: 0.2s; position: relative; overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 3px solid #555;
+            background: #333;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            cursor: pointer;
+            transition: 0.2s;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
         }
-        .round-btn:active { transform: scale(0.95); }
-        .round-btn:hover { background: #444; border-color: #777; }
+
+        .round-btn:active {
+            transform: scale(0.95);
+        }
+
+        .round-btn:hover {
+            background: #444;
+            border-color: #777;
+        }
 
         /* Hero Specific Styles */
-        .hero-btn.ready { border-color: #ffd700; box-shadow: 0 0 15px #ffd700; background: #444; }
-        .hero-btn.dead { filter: grayscale(100%); opacity: 0.8; border-color: #333; cursor: not-allowed; }
-        .hero-txt { z-index: 2; position: relative; text-shadow: 0 0 3px black; font-size: 18px; }
-        .mp-fill { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: rgba(255, 215, 0, 0.5); transition: height 0.2s; pointer-events: none; z-index: 1; }
+        .hero-btn.ready {
+            border-color: #ffd700;
+            box-shadow: 0 0 15px #ffd700;
+            background: #444;
+        }
+
+        .hero-btn.dead {
+            filter: grayscale(100%);
+            opacity: 0.8;
+            border-color: #333;
+            cursor: not-allowed;
+        }
+
+        .hero-txt {
+            z-index: 2;
+            position: relative;
+            text-shadow: 0 0 3px black;
+            font-size: 18px;
+        }
+
+        .mp-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 0%;
+            background: rgba(255, 215, 0, 0.5);
+            transition: height 0.2s;
+            pointer-events: none;
+            z-index: 1;
+        }
 
         /* System Buttons Specific Styles */
-        .sys-btn { font-size: 24px; border-color: #666; }
-        .sys-btn.active { border-color: #0f0; color: #0f0; background: #003300; box-shadow: 0 0 10px #0f0; }
-        .sys-btn.paused { border-color: #ff0; color: #ff0; background: #333300; box-shadow: 0 0 10px #ff0; }
+        .sys-btn {
+            font-size: 24px;
+            border-color: #666;
+        }
+
+        .sys-btn.active {
+            border-color: #0f0;
+            color: #0f0;
+            background: #003300;
+            box-shadow: 0 0 10px #0f0;
+        }
+
+        .sys-btn.paused {
+            border-color: #ff0;
+            color: #ff0;
+            background: #333300;
+            box-shadow: 0 0 10px #ff0;
+        }
 
         /* Settlement Screen */
         #settlement {
-            position: absolute; top:0; left:0; width:100%; height:100%;
-            background:rgba(0,0,0,0.85); display:none; flex-direction:column;
-            justify-content:center; align-items:center; z-index:100; color:white;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            color: white;
         }
-        #settlement.show { display:flex; }
-        h1 { font-size: 60px; margin-bottom: 20px; }
-        button.restart-btn { padding: 10px 30px; font-size: 20px; cursor: pointer; background: #ffd700; border: none; font-weight: bold; border-radius: 5px; }
-        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 24px; z-index: 99; }
+
+        #settlement.show {
+            display: flex;
+        }
+
+        h1 {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+
+        button.restart-btn {
+            padding: 10px 30px;
+            font-size: 20px;
+            cursor: pointer;
+            background: #ffd700;
+            border: none;
+            font-weight: bold;
+            border-radius: 5px;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            z-index: 99;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
@@ -116,15 +288,16 @@
 
 <script>
 
-// ================= 全局变量 =================
+    // ================= 全局变量 =================
     const SPAWN_INTERVAL = 15.0;
     const RESPAWN_TIME = 20.0;
-    const COLORS = { BLUE: '#44aaff', RED: '#ff4444', MINION_BLUE: '#88ccff', MINION_RED: '#ff8888', TOWER: '#ffffff' };
+    const COLORS = {BLUE: '#44aaff', RED: '#ff4444', MINION_BLUE: '#88ccff', MINION_RED: '#ff8888', TOWER: '#ffffff'};
 
     let entities = [];
     let buildings = [];
     let projectiles = [];
     let particles = [];
+    let obstacles = []; // 🔥 新增：障碍物数组
     let waveTimer = SPAWN_INTERVAL;
     let isGameOver = false;
     let lastTime = 0;
@@ -134,50 +307,68 @@
     let TIME_SCALE = 1.0;
     let PLAYER_AUTO_ULT = false;
 
-    let MAP = { BLUE_BASE: {}, RED_BASE: {}, LANES: {} };
+    let MAP = {BLUE_BASE: {}, RED_BASE: {}, LANES: {}};
 
     let scene, camera, renderer, groundMesh;
     let width = window.innerWidth;
     let height = window.innerHeight;
 
-    // 🔥 新增：资源管理器
     const loader = new THREE.GLTFLoader();
     let ASSETS = {
         HERO: null,
         MINION: null,
-        TOWER: null
+        TOWER: null,
+        PROJECTILE: null, // 🔥 新增：子弹
+        VFX_SLASH: null   // 🔥 新增：刀光
     };
 
-    // 🔥 配置你的模型路径 (请确保文件在项目目录下)
+    // 🔥 请确保目录下有这些文件，或者替换为你真实的文件名
     const MODEL_URLS = {
-        HERO: 'https://fire-zombie.oss-cn-shanghai.aliyuncs.com/Ranger.gltf',   // 替换成你的文件名
-        MINION: 'https://fire-zombie.oss-cn-shanghai.aliyuncs.com/Monk.gltf', // 替换成你的文件名
-        TOWER: 'https://fire-zombie.oss-cn-shanghai.aliyuncs.com/Rogue.gltf'    // 替换成你的文件名
+        HERO: './models/Wizard.gltf',
+        MINION: './models/Warrior.gltf',
+        TOWER: './models/Tower.glb',
+        PROJECTILE: './models/projectile.gltf', // 例如：arrow.gltf
+        VFX_SLASH: './models/slash.gltf'        // 例如：slash_effect.gltf
     };
 
-    // 🔥 资源加载函数
     function loadResources() {
         return new Promise((resolve, reject) => {
             const manager = new THREE.LoadingManager();
 
             manager.onLoad = () => {
                 console.log('所有资源加载完毕!');
-                resolve(); // 通知游戏开始
+                resolve();
+            };
+
+            manager.onError = (url) => {
+                console.warn('加载失败 (但不影响启动): ' + url);
             };
 
             const gltfLoader = new THREE.GLTFLoader(manager);
 
-            // 加载英雄
-            gltfLoader.load(MODEL_URLS.HERO, (gltf) => { ASSETS.HERO = gltf; });
-            // 加载小兵
-            gltfLoader.load(MODEL_URLS.MINION, (gltf) => { ASSETS.MINION = gltf; });
-            // 加载塔
-            gltfLoader.load(MODEL_URLS.TOWER, (gltf) => { ASSETS.TOWER = gltf; });
+            // 批量加载 helper
+            const load = (key, url) => {
+                gltfLoader.load(url, (gltf) => {
+                    ASSETS[key] = gltf;
+                }, undefined, (err) => {
+                    // 允许部分资源缺失，不阻断流程
+                    console.warn(`Missing asset: ${key}`);
+                });
+            };
+
+            load('HERO', MODEL_URLS.HERO);
+            load('MINION', MODEL_URLS.MINION);
+            load('TOWER', MODEL_URLS.TOWER);
+            load('PROJECTILE', MODEL_URLS.PROJECTILE); // 🔥 加载子弹
+            load('VFX_SLASH', MODEL_URLS.VFX_SLASH);   // 🔥 加载刀光
         });
     }
 
-    function getThreeColor(hexStr) { return new THREE.Color(hexStr); }
-    const COLORS_3D = { BLUE: getThreeColor(COLORS.BLUE), RED: getThreeColor(COLORS.RED) };
+    function getThreeColor(hexStr) {
+        return new THREE.Color(hexStr);
+    }
+
+    const COLORS_3D = {BLUE: getThreeColor(COLORS.BLUE), RED: getThreeColor(COLORS.RED)};
 
     // ================= 3D 引擎 =================
     function init3D() {
@@ -191,7 +382,7 @@
         camera.position.set(centerX - 200 * scale, 450 * scale, centerZ + 600 * scale);
         camera.lookAt(centerX, 0, centerZ);
 
-        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer = new THREE.WebGLRenderer({antialias: true});
         renderer.setSize(width, height);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -213,15 +404,18 @@
         scene.add(dirLight.target);
         dirLight.castShadow = true;
         const shadowD = Math.max(width, height) * 1.5;
-        dirLight.shadow.camera.left = -shadowD; dirLight.shadow.camera.right = shadowD;
-        dirLight.shadow.camera.top = shadowD; dirLight.shadow.camera.bottom = -shadowD;
-        dirLight.shadow.mapSize.width = 4096; dirLight.shadow.mapSize.height = 4096;
+        dirLight.shadow.camera.left = -shadowD;
+        dirLight.shadow.camera.right = shadowD;
+        dirLight.shadow.camera.top = shadowD;
+        dirLight.shadow.camera.bottom = -shadowD;
+        dirLight.shadow.mapSize.width = 4096;
+        dirLight.shadow.mapSize.height = 4096;
         scene.add(dirLight);
 
         const groundGeo = new THREE.PlaneGeometry(width * 2.5, height * 2.5);
         groundGeo.rotateX(-Math.PI / 2);
         groundGeo.translate(width / 2, 0, height / 2);
-        const groundMat = new THREE.MeshPhongMaterial({ color: 0x222222, side: THREE.DoubleSide });
+        const groundMat = new THREE.MeshPhongMaterial({color: 0x222222, side: THREE.DoubleSide});
         groundMesh = new THREE.Mesh(groundGeo, groundMat);
         groundMesh.receiveShadow = true;
         scene.add(groundMesh);
@@ -231,7 +425,7 @@
     }
 
     function drawLanes() {
-        const material = new THREE.LineBasicMaterial({ color: 0x444444, linewidth: 2 });
+        const material = new THREE.LineBasicMaterial({color: 0x444444, linewidth: 2});
         const yHeight = 5;
         const createLine = (pts) => {
             const geo = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, yHeight, p.y)));
@@ -249,18 +443,21 @@
         DEBUG_MODE = !DEBUG_MODE;
         document.getElementById('debug-btn').classList.toggle('active');
     }
+
     function togglePause() {
         IS_PAUSED = !IS_PAUSED;
         const btn = document.getElementById('pause-btn');
         btn.classList.toggle('paused');
         btn.innerText = IS_PAUSED ? "继续" : "暂停";
     }
+
     function toggleSpeed() {
         TIME_SCALE = TIME_SCALE === 1.0 ? 2.0 : 1.0;
         const btn = document.getElementById('speed-btn');
         btn.classList.toggle('active');
         btn.innerText = TIME_SCALE === 2.0 ? "2x" : "1x";
     }
+
     function toggleAutoUlt() {
         PLAYER_AUTO_ULT = !PLAYER_AUTO_ULT;
         document.getElementById('auto-btn').classList.toggle('active');
@@ -273,26 +470,42 @@
         let y = base.y;
 
         if (team === 'BLUE') {
-            if (lane === 'TOP') { x += 45; y -= 70; }
-            else if (lane === 'BOT') { x += 70; y -= 15; }
-            else { x += 70; y -= 70; }
+            if (lane === 'TOP') {
+                x += 45;
+                y -= 70;
+            } else if (lane === 'BOT') {
+                x += 70;
+                y -= 15;
+            } else {
+                x += 70;
+                y -= 70;
+            }
         } else {
-            if (lane === 'TOP') { x -= 70; y += 15; }
-            else if (lane === 'BOT') { x -= 45; y += 70; }
-            else { x -= 70; y += 70; }
+            if (lane === 'TOP') {
+                x -= 70;
+                y += 15;
+            } else if (lane === 'BOT') {
+                x -= 45;
+                y += 70;
+            } else {
+                x -= 70;
+                y += 70;
+            }
         }
 
-        return { x, y };
+        return {x, y};
     }
 
     // 物理引擎
     function resolveCollisions() {
-        for(let iter=0; iter<3; iter++) {
+        for (let iter = 0; iter < 3; iter++) {
             for (let i = 0; i < entities.length; i++) {
                 let u1 = entities[i];
                 if (u1.dead || u1.state === 'RESPAWNING') continue;
-                if (u1.x < u1.physicsRadius) u1.x = u1.physicsRadius; if (u1.x > width - u1.physicsRadius) u1.x = width - u1.physicsRadius;
-                if (u1.y < u1.physicsRadius) u1.y = u1.physicsRadius; if (u1.y > height - u1.physicsRadius) u1.y = height - u1.physicsRadius;
+                if (u1.x < u1.physicsRadius) u1.x = u1.physicsRadius;
+                if (u1.x > width - u1.physicsRadius) u1.x = width - u1.physicsRadius;
+                if (u1.y < u1.physicsRadius) u1.y = u1.physicsRadius;
+                if (u1.y > height - u1.physicsRadius) u1.y = height - u1.physicsRadius;
 
                 for (let j = i + 1; j < entities.length; j++) {
                     let u2 = entities[j];
@@ -300,7 +513,7 @@
 
                     let dx = u1.x - u2.x;
                     let dy = u1.y - u2.y;
-                    let distSq = dx*dx + dy*dy;
+                    let distSq = dx * dx + dy * dy;
                     let minSep = u1.physicsRadius + u2.physicsRadius;
 
                     if (distSq < minSep * minSep && distSq > 0.001) {
@@ -309,8 +522,10 @@
                         let push = overlap * 0.5;
                         let nx = dx / dist;
                         let ny = dy / dist;
-                        u1.x += nx * push; u1.y += ny * push;
-                        u2.x -= nx * push; u2.y -= ny * push;
+                        u1.x += nx * push;
+                        u1.y += ny * push;
+                        u2.x -= nx * push;
+                        u2.y -= ny * push;
                     }
                 }
             }
@@ -318,13 +533,17 @@
                 if (u.dead || u.state === 'RESPAWNING') return;
                 buildings.forEach(b => {
                     if (b.dead) return;
-                    let halfW = b.collider.w / 2; let halfH = b.collider.h / 2;
-                    let minX = b.x - halfW; let maxX = b.x + halfW;
-                    let minY = b.y - halfH; let maxY = b.y + halfH;
+                    let halfW = b.collider.w / 2;
+                    let halfH = b.collider.h / 2;
+                    let minX = b.x - halfW;
+                    let maxX = b.x + halfW;
+                    let minY = b.y - halfH;
+                    let maxY = b.y + halfH;
                     let cx = Math.max(minX, Math.min(u.x, maxX));
                     let cy = Math.max(minY, Math.min(u.y, maxY));
-                    let dx = u.x - cx; let dy = u.y - cy;
-                    let distSq = dx*dx + dy*dy;
+                    let dx = u.x - cx;
+                    let dy = u.y - cy;
+                    let distSq = dx * dx + dy * dy;
                     if (distSq < u.physicsRadius * u.physicsRadius) {
                         let dist = Math.sqrt(distSq);
                         if (dist > 0) {
@@ -332,7 +551,10 @@
                             u.x += (dx / dist) * overlap;
                             u.y += (dy / dist) * overlap;
                         } else {
-                            let dLeft = u.x - minX; let dRight = maxX - u.x; let dTop = u.y - minY; let dBottom = maxY - u.y;
+                            let dLeft = u.x - minX;
+                            let dRight = maxX - u.x;
+                            let dTop = u.y - minY;
+                            let dBottom = maxY - u.y;
                             let minD = Math.min(dLeft, dRight, dTop, dBottom);
                             const buffer = 0.5;
                             if (minD === dLeft) u.x = minX - u.physicsRadius - buffer;
@@ -342,21 +564,42 @@
                         }
                     }
                 });
+
+                // 🔥 2. Unit vs Obstacles (新增逻辑：撞树)
+                obstacles.forEach(o => {
+                    let dx = u.x - o.x;
+                    let dy = u.y - o.y;
+                    let distSq = dx * dx + dy * dy;
+                    let minSep = u.physicsRadius + o.physicsRadius;
+
+                    if (distSq < minSep * minSep) {
+                        let dist = Math.sqrt(distSq);
+                        // 简单的推挤逻辑：把单位推开
+                        if (dist > 0) {
+                            let push = (minSep - dist); // 推开的距离
+                            let nx = dx / dist;
+                            let ny = dy / dist;
+                            u.x += nx * push;
+                            u.y += ny * push;
+                        }
+                    }
+                });
             });
+
         }
     }
 
-    function createVFX(type, x, y, color, angle=0) {
+    function createVFX(type, x, y, color, angle = 0) {
         if (type === 'NORMAL') {
-            for(let i=0; i<3; i++) particles.push(new Particle(x, y, '#cccccc', 'SMALL'));
+            for (let i = 0; i < 3; i++) particles.push(new Particle(x, y, '#cccccc', 'SMALL'));
         } else if (type === 'CRIT') {
-            for(let i=0; i<15; i++) {
+            for (let i = 0; i < 15; i++) {
                 let c = Math.random() > 0.5 ? '#ffd700' : '#ff4500';
                 particles.push(new Particle(x, y, c, 'BURST'));
             }
         } else if (type === 'ULT') {
             particles.push(new ShockwaveRing(x, y, color));
-            for(let i=0; i<20; i++) particles.push(new Particle(x, y, color, 'RISE'));
+            for (let i = 0; i < 20; i++) particles.push(new Particle(x, y, color, 'RISE'));
         } else if (type === 'SLASH') {
             particles.push(new MeleeSlash(x, y, angle));
         }
@@ -369,7 +612,7 @@
         let inRange = candidates.filter(e => {
             // 1. 距离判定
             let dist = Math.hypot(e.x - me.x, e.y - me.y);
-            let targetRadius = e.physicsRadius || (e.collider ? e.collider.w/2 : 20);
+            let targetRadius = e.physicsRadius || (e.collider ? e.collider.w / 2 : 20);
             if (dist > range + targetRadius) return false;
 
             // 2. 🔥 核心修复：分路约束逻辑
@@ -391,19 +634,25 @@
         let units = inRange.filter(e => e instanceof Unit);
         let structs = inRange.filter(e => e instanceof Building);
 
-        if (units.length > 0) return units.sort((a,b) => Math.hypot(a.x-me.x, a.y-me.y) - Math.hypot(b.x-me.x, b.y-me.y))[0];
-        return structs.sort((a,b) => Math.hypot(a.x-me.x, a.y-me.y) - Math.hypot(b.x-me.x, b.y-me.y))[0];
+        if (units.length > 0) return units.sort((a, b) => Math.hypot(a.x - me.x, a.y - me.y) - Math.hypot(b.x - me.x, b.y - me.y))[0];
+        return structs.sort((a, b) => Math.hypot(a.x - me.x, a.y - me.y) - Math.hypot(b.x - me.x, b.y - me.y))[0];
     }
 
     // ================= 实体类 =================
 
     class Entity {
         constructor(x, y, team, radius) {
-            this.x = x; this.y = y; this.team = team;
+            this.x = x;
+            this.y = y;
+            this.team = team;
             this.radius = radius;
             this.physicsRadius = radius;
-            this.hp = 100; this.maxHp = 100; this.dead = false;
-            this.mesh = null; this.hpBarGroup = null; this.hpBarFill = null;
+            this.hp = 100;
+            this.maxHp = 100;
+            this.dead = false;
+            this.mesh = null;
+            this.hpBarGroup = null;
+            this.hpBarFill = null;
             this.debugGroup = null;
         }
 
@@ -411,15 +660,15 @@
             if (!this.mesh) return;
             let visible = !this.dead && this.state !== 'RESPAWNING';
             this.mesh.visible = visible;
-            if(this.hpBarGroup) this.hpBarGroup.visible = visible;
-            if(this.debugGroup) {
+            if (this.hpBarGroup) this.hpBarGroup.visible = visible;
+            if (this.debugGroup) {
                 this.debugGroup.visible = visible && DEBUG_MODE;
-                if(visible) this.debugGroup.position.set(this.x, 2, this.y);
+                if (visible) this.debugGroup.position.set(this.x, 2, this.y);
             }
             if (visible) {
                 this.mesh.position.set(this.x, this.mesh.userData.yOffset || 0, this.y);
                 if (this.hpBarGroup) {
-                    this.hpBarGroup.position.set(this.x, (this.mesh.userData.height || 20) + 15, this.y);
+                    this.hpBarGroup.position.set(this.x, (this.mesh.userData.height || 20) + 25, this.y);
                     let pct = Math.max(0, this.hp / this.maxHp);
                     this.hpBarFill.scale.x = pct;
                     this.hpBarFill.visible = pct > 0;
@@ -432,13 +681,16 @@
         createHpBar(w) {
             this.hpBarGroup = new THREE.Group();
             const bgGeo = new THREE.PlaneGeometry(w, 6);
-            const bgMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
+            const bgMat = new THREE.MeshBasicMaterial({color: 0x000000, side: THREE.DoubleSide});
             this.hpBarGroup.add(new THREE.Mesh(bgGeo, bgMat));
             const fillGeo = new THREE.PlaneGeometry(w, 4);
-            fillGeo.translate(w/2, 0, 0);
+            fillGeo.translate(w / 2, 0, 0);
             let color = this.team === 'BLUE' ? 0x00ff00 : 0xff3333;
-            this.hpBarFill = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide }));
-            this.hpBarFill.position.x = -w/2;
+            this.hpBarFill = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({
+                color: color,
+                side: THREE.DoubleSide
+            }));
+            this.hpBarFill.position.x = -w / 2;
             this.hpBarFill.position.z = 0.5;
             this.hpBarGroup.add(this.hpBarFill);
             scene.add(this.hpBarGroup);
@@ -454,7 +706,7 @@
                 geo = new THREE.CylinderGeometry(this.physicsRadius, this.physicsRadius, height, 16);
             }
             const edges = new THREE.EdgesGeometry(geo);
-            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: color }));
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({color: color}));
             line.position.y = height / 2;
             this.debugGroup.add(line);
 
@@ -462,24 +714,37 @@
                 const curve = new THREE.EllipseCurve(0, 0, attackRange, attackRange, 0, 2 * Math.PI);
                 const pts = curve.getPoints(64);
                 const rngGeo = new THREE.BufferGeometry().setFromPoints(pts);
-                const rngLine = new THREE.Line(rngGeo, new THREE.LineBasicMaterial({ color: 0xffff00 }));
-                rngLine.rotation.x = -Math.PI / 2; rngLine.position.y = 1;
+                const rngLine = new THREE.Line(rngGeo, new THREE.LineBasicMaterial({color: 0xffff00}));
+                rngLine.rotation.x = -Math.PI / 2;
+                rngLine.position.y = 1;
                 this.debugGroup.add(rngLine);
             }
             scene.add(this.debugGroup);
         }
 
         takeDamage(amount, isCrit) {
-            if(this.dead) return;
+            if (this.dead) return;
             this.hp -= amount;
             if (this.type === 'HERO' || isCrit) createVFX(isCrit ? 'CRIT' : 'NORMAL', this.x, this.y, '#fff');
-            if(this.hp <= 0) { this.hp = 0; this.die(); }
+            if (this.hp <= 0) {
+                this.hp = 0;
+                this.die();
+            }
         }
 
         dispose() {
-            if (this.mesh) { scene.remove(this.mesh); this.mesh = null; }
-            if (this.hpBarGroup) { scene.remove(this.hpBarGroup); this.hpBarGroup = null; }
-            if (this.debugGroup) { scene.remove(this.debugGroup); this.debugGroup = null; }
+            if (this.mesh) {
+                scene.remove(this.mesh);
+                this.mesh = null;
+            }
+            if (this.hpBarGroup) {
+                scene.remove(this.hpBarGroup);
+                this.hpBarGroup = null;
+            }
+            if (this.debugGroup) {
+                scene.remove(this.debugGroup);
+                this.debugGroup = null;
+            }
         }
 
         die() {
@@ -492,24 +757,29 @@
     class Building extends Entity {
         constructor(x, y, team, type, lane) {
             super(x, y, team, type === 'BASE' ? 35 : 20);
-            this.type = type; this.lane = lane;
-            this.maxHp = type === 'BASE' ? 4000 : 1500; this.hp = this.maxHp;
-            this.range = 160; this.atkDmg = 150; this.atkTimer = 0;
+            this.type = type;
+            this.lane = lane;
+            this.maxHp = type === 'BASE' ? 4000 : 1500;
+            this.hp = this.maxHp;
+            this.range = 160;
+            this.atkDmg = 150;
+            this.atkTimer = 0;
 
             this.visualSize = type === 'BASE' ? 60 : 40;
             this.visualHeight = type === 'BASE' ? 40 : 80;
-            this.collider = { type: 'BOX', w: this.visualSize * 1.3, h: this.visualSize * 1.3 };
-            this.physicsRadius = Math.sqrt(Math.pow(this.collider.w/2, 2) + Math.pow(this.collider.h/2, 2));
+            this.collider = {type: 'BOX', w: this.visualSize * 1.3, h: this.visualSize * 1.3};
+            this.physicsRadius = Math.sqrt(Math.pow(this.collider.w / 2, 2) + Math.pow(this.collider.h / 2, 2));
 
             this.createMesh();
         }
+
         createMesh() {
             // 资源检查
             if (!ASSETS.TOWER) {
                 // 回退到简单的方块
                 const color = this.team === 'BLUE' ? COLORS_3D.BLUE : COLORS_3D.RED;
                 const geo = new THREE.BoxGeometry(this.visualSize, this.visualHeight, this.visualSize);
-                this.mesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: color }));
+                this.mesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({color: color}));
                 this.mesh.position.y = this.visualHeight / 2;
                 scene.add(this.mesh);
                 this.createHpBar(this.visualSize);
@@ -546,12 +816,12 @@
 
                         // 染色逻辑
                         if (mat.emissive) {
-                            mat.emissive.setHex(teamColor);
+                            // mat.emissive.setHex(teamColor);
                             mat.emissiveIntensity = 0.4; // 增加亮度
                         } else if (mat.color) {
                             // 如果没有贴图，直接染色；如果有贴图，可以尝试混合颜色或不改
                             if (!mat.map) {
-                                mat.color.setHex(teamColor);
+                                // mat.color.setHex(teamColor);
                             }
                         }
                         return mat;
@@ -571,6 +841,7 @@
             this.createDebugVisuals(this.visualHeight, this.range);
             this.sync3D();
         }
+
         update(dt) {
             if (this.dead) return;
             this.atkTimer += dt;
@@ -583,24 +854,49 @@
             }
             this.sync3D();
         }
-        draw(ctx) {}
-        die() { super.die(); this.dispose(); if (this.type === 'BASE') checkGameOver(this.team); }
+
+        draw(ctx) {
+        }
+
+        die() {
+            super.die();
+            this.dispose();
+            if (this.type === 'BASE') checkGameOver(this.team);
+        }
     }
 
     class Unit extends Entity {
         constructor(id, x, y, team, type, lane) {
             super(x, y, team, type === 'HERO' ? 16 : 6);
             this.physicsRadius = this.radius * 2.0;
-            this.id = id; this.type = type; this.lane = lane;
+            this.id = id;
+            this.type = type;
+            this.lane = lane;
             this.isFirstSpawn = true;
 
-            if (type === 'HERO') { this.maxHp = 1200; this.atk = 100; this.speed = 60; this.range = 130; this.mp = 0; this.maxMp = 100; }
-            else { this.maxHp = 300; this.atk = 20; this.speed = 40; this.range = 45; }
+            if (type === 'HERO') {
+                this.maxHp = 1200;
+                this.atk = 100;
+                this.speed = 60;
+                this.range = 130;
+                this.mp = 0;
+                this.maxMp = 100;
+            } else {
+                this.maxHp = 300;
+                this.atk = 20;
+                this.speed = 40;
+                this.range = 45;
+            }
             this.hp = this.maxHp;
-            this.collider = { type: 'CIRCLE', radius: this.physicsRadius };
+            this.collider = {type: 'CIRCLE', radius: this.physicsRadius};
 
-            this.state = 'MOVE'; this.respawnTimer = 0; this.target = null; this.atkTimer = 0;
-            this.waypoints = this.getWaypoints(team, lane); this.wpIndex = 0; this.uiBtn = null;
+            this.state = 'MOVE';
+            this.respawnTimer = 0;
+            this.target = null;
+            this.atkTimer = 0;
+            this.waypoints = this.getWaypoints(team, lane);
+            this.wpIndex = 0;
+            this.uiBtn = null;
             this.facingAngle = 0;
             this.createMesh();
         }
@@ -611,7 +907,7 @@
             if (!source) {
                 // 回退逻辑...
                 const geo = new THREE.CylinderGeometry(this.radius, this.radius, 20, 16);
-                this.mesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: this.team === 'BLUE' ? 0x0000ff : 0xff0000 }));
+                this.mesh = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({color: this.team === 'BLUE' ? 0x0000ff : 0xff0000}));
                 scene.add(this.mesh);
                 this.createHpBar(this.radius * 2);
                 this.createDebugVisuals(20, this.range);
@@ -623,7 +919,7 @@
 
             // 🔥 1. 修复单位太小：大幅增加缩放倍数
             // 之前是 4.0 / 2.5，现在改为 8.0 / 5.0 (根据实际观感可微调)
-            let scale = this.type === 'HERO' ? 18.0 : 15.0;
+            let scale = this.type === 'HERO' ? 24.0 : 15.0;
             this.mesh.scale.set(scale, scale, scale);
 
             // 队伍染色
@@ -648,13 +944,13 @@
 
                         // 染色逻辑：混合队伍颜色
                         if (mat.emissive) {
-                            mat.emissive.setHex(teamColor);
+                            // mat.emissive.setHex(teamColor);
                             mat.emissiveIntensity = 0.4; // 稍微亮一点
                         } else if (mat.color) {
                             // 如果有贴图(map)，不要直接覆盖 color，否则贴图会丢
                             // 这里我们只在没有贴图时覆盖颜色，或者用 emissive 染色
                             if (!mat.map) {
-                                mat.color.setHex(teamColor);
+                                // mat.color.setHex(teamColor);
                             }
                         }
                         return mat;
@@ -683,10 +979,9 @@
                 };
 
                 let idleClip = findClip(['idle', 'stand', 'wait']) || source.animations[0];
-                let runClip = findClip(['run', 'walk', 'move', 'charge']) || idleClip;
-                let attackClip = findClip(['shoot','attack', 'hit', 'slash', 'fight']) || runClip;
+                let runClip = findClip(['interact', 'run', 'walk', 'move', 'charge']) || idleClip;
+                let attackClip = findClip(['sword', 'staff', 'attack', 'hit', 'slash', 'fight']) || runClip;
 
-                debugger
                 this.animations['Idle'] = this.mixer.clipAction(idleClip);
                 this.animations['Run'] = this.mixer.clipAction(runClip);
                 this.animations['Attack'] = this.mixer.clipAction(attackClip);
@@ -705,10 +1000,18 @@
         }
 
         getWaypoints(team, lane) {
-            let path = []; let enemyBase = team === 'BLUE' ? MAP.RED_BASE : MAP.BLUE_BASE; let off = (Math.random() - 0.5) * 40;
-            if (lane === 'MID') { path.push({x: enemyBase.x, y: enemyBase.y}); }
-            else if (lane === 'TOP') { path.push({x: MAP.LANES.TOP_LEFT.x + off, y: MAP.LANES.TOP_LEFT.y + off}); path.push({x: enemyBase.x, y: enemyBase.y}); }
-            else if (lane === 'BOT') { path.push({x: MAP.LANES.BOT_RIGHT.x + off, y: MAP.LANES.BOT_RIGHT.y + off}); path.push({x: enemyBase.x, y: enemyBase.y}); }
+            let path = [];
+            let enemyBase = team === 'BLUE' ? MAP.RED_BASE : MAP.BLUE_BASE;
+            let off = (Math.random() - 0.5) * 40;
+            if (lane === 'MID') {
+                path.push({x: enemyBase.x, y: enemyBase.y});
+            } else if (lane === 'TOP') {
+                path.push({x: MAP.LANES.TOP_LEFT.x + off, y: MAP.LANES.TOP_LEFT.y + off});
+                path.push({x: enemyBase.x, y: enemyBase.y});
+            } else if (lane === 'BOT') {
+                path.push({x: MAP.LANES.BOT_RIGHT.x + off, y: MAP.LANES.BOT_RIGHT.y + off});
+                path.push({x: enemyBase.x, y: enemyBase.y});
+            }
             return path;
         }
 
@@ -719,13 +1022,18 @@
                 this.sync3D();
                 return;
             }
-            if (this.dead) { this.sync3D(); return; }
+            if (this.dead) {
+                this.sync3D();
+                return;
+            }
 
             if (this.type === 'HERO') {
                 if (this.mp < 100) this.mp += dt * 8;
                 let isPlayer = (this.team === 'BLUE');
                 let shouldAutoUlt = !isPlayer || PLAYER_AUTO_ULT;
-                if (shouldAutoUlt && this.mp >= 100 && this.target) { if(Math.random() < 0.05) this.castUltimate(); }
+                if (shouldAutoUlt && this.mp >= 100 && this.target) {
+                    if (Math.random() < 0.05) this.castUltimate();
+                }
             }
 
             // 索敌 (保持 V86 逻辑)
@@ -741,7 +1049,7 @@
                 this.target = findSmartTarget(this, searchRange, laneConstraint);
                 if (this.type === 'HERO' && !this.target && !laneConstraint) {
                     let roamTarget = findSmartTarget(this, 2000);
-                    if(roamTarget) this.target = roamTarget;
+                    if (roamTarget) this.target = roamTarget;
                 }
             }
 
@@ -754,7 +1062,11 @@
                 let targetRad = this.target.physicsRadius || 20;
                 let range = this.range + targetRad + this.physicsRadius * 0.5;
 
-                if (this.type === 'MINION' && dist > 250) { this.target = null; this.state = 'MOVE'; return; }
+                if (this.type === 'MINION' && dist > 250) {
+                    this.target = null;
+                    this.state = 'MOVE';
+                    return;
+                }
 
                 if (dist <= range) {
                     // 🔥 标记：正在攻击
@@ -765,13 +1077,15 @@
                     this.facingAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
 
                     if (this.atkTimer > 1.5) {
-                        let isCrit = Math.random() < 0.2; let dmg = this.atk * (isCrit ? 2.0 : 1.0);
+                        let isCrit = Math.random() < 0.2;
+                        let dmg = this.atk * (isCrit ? 2.0 : 1.0);
                         if (this.range > 50) projectiles.push(new Projectile(this.x, this.y, this.target, dmg, '#fff'));
                         else {
                             this.target.takeDamage(dmg, isCrit);
                             createVFX('SLASH', this.x, this.y, '#fff', this.facingAngle);
                         }
-                        this.atkTimer = 0; if(this.type === 'HERO') this.mp = Math.min(100, this.mp + 15);
+                        this.atkTimer = 0;
+                        if (this.type === 'HERO') this.mp = Math.min(100, this.mp + 15);
                     }
                 } else {
                     this.moveTowards(this.target.x, this.target.y, dt);
@@ -783,8 +1097,8 @@
                     let passed = false;
                     if (this.team === 'BLUE' && this.lane === 'TOP' && this.y < wp0.y) passed = true;
                     if (this.team === 'BLUE' && this.lane === 'BOT' && this.x > wp0.x) passed = true;
-                    if (this.team === 'RED'  && this.lane === 'TOP' && this.x < wp0.x) passed = true;
-                    if (this.team === 'RED'  && this.lane === 'BOT' && this.y > wp0.y) passed = true;
+                    if (this.team === 'RED' && this.lane === 'TOP' && this.x < wp0.x) passed = true;
+                    if (this.team === 'RED' && this.lane === 'BOT' && this.y > wp0.y) passed = true;
                     if (passed) this.wpIndex = 1;
                 }
                 if (this.wpIndex < this.waypoints.length) {
@@ -817,10 +1131,13 @@
         }
 
         moveTowards(tx, ty, dt) {
-            let dx = tx - this.x; let dy = ty - this.y;
-            let dist = Math.hypot(dx, dy); if(dist === 0) return;
+            let dx = tx - this.x;
+            let dy = ty - this.y;
+            let dist = Math.hypot(dx, dy);
+            if (dist === 0) return;
 
-            let moveX = (dx / dist); let moveY = (dy / dist);
+            let moveX = (dx / dist);
+            let moveY = (dy / dist);
 
             let steerX = 0, steerY = 0;
             let speedMod = 1.0;
@@ -837,13 +1154,22 @@
                     let dot = moveX * toOtherX + moveY * toOtherY;
 
                     if (dot > 0.6) {
-                        steerX -= toOtherX * force * 5.0; steerY -= toOtherY * force * 5.0;
+                        steerX -= toOtherX * force * 5.0;
+                        steerY -= toOtherY * force * 5.0;
                         let cross = moveX * toOtherY - moveY * toOtherX;
-                        if (cross > 0) { steerX += toOtherY * force * 3.0; steerY += -toOtherX * force * 3.0; }
-                        else { steerX += -toOtherY * force * 3.0; steerY += toOtherX * force * 3.0; }
-                        if (d < (this.physicsRadius + other.physicsRadius) * 1.05) { speedMod = Math.min(speedMod, 0.5); }
+                        if (cross > 0) {
+                            steerX += toOtherY * force * 3.0;
+                            steerY += -toOtherX * force * 3.0;
+                        } else {
+                            steerX += -toOtherY * force * 3.0;
+                            steerY += toOtherX * force * 3.0;
+                        }
+                        if (d < (this.physicsRadius + other.physicsRadius) * 1.05) {
+                            speedMod = Math.min(speedMod, 0.5);
+                        }
                     } else if (dot > -0.5) {
-                        steerX -= toOtherX * force * 1.5; steerY -= toOtherY * force * 1.5;
+                        steerX -= toOtherX * force * 1.5;
+                        steerY -= toOtherY * force * 1.5;
                     }
                 }
             });
@@ -851,10 +1177,12 @@
             steerX += (Math.random() - 0.5) * 0.2;
             steerY += (Math.random() - 0.5) * 0.2;
 
-            let finalX = moveX + steerX; let finalY = moveY + steerY;
+            let finalX = moveX + steerX;
+            let finalY = moveY + steerY;
             let finalLen = Math.hypot(finalX, finalY);
             if (finalLen > 0.01) {
-                finalX /= finalLen; finalY /= finalLen;
+                finalX /= finalLen;
+                finalY /= finalLen;
                 this.facingAngle = Math.atan2(finalY, finalX);
                 this.x += finalX * this.speed * dt * speedMod;
                 this.y += finalY * this.speed * dt * speedMod;
@@ -864,7 +1192,7 @@
         sync3D() {
             super.sync3D();
             if (this.mesh && !this.dead) {
-                this.mesh.rotation.y = -this.facingAngle + Math.PI/2;
+                this.mesh.rotation.y = -this.facingAngle + Math.PI / 2;
                 if (this.ringMesh) this.ringMesh.visible = (this.mp >= 100);
             }
         }
@@ -878,12 +1206,26 @@
             targets.forEach(t => t.takeDamage(200, true));
         }
 
-        isPlayerControlled() { return this.team === 'BLUE'; }
+        isPlayerControlled() {
+            return this.team === 'BLUE';
+        }
 
-        die() { if (this.type === 'HERO') { this.state = 'RESPAWNING'; this.respawnTimer = RESPAWN_TIME; this.dead = true; if(this.uiBtn) this.uiBtn.classList.add('dead'); } else { super.die(); } }
+        die() {
+            if (this.type === 'HERO') {
+                this.state = 'RESPAWNING';
+                this.respawnTimer = RESPAWN_TIME;
+                this.dead = true;
+                if (this.uiBtn) this.uiBtn.classList.add('dead');
+            } else {
+                super.die();
+            }
+        }
 
         respawn() {
-            this.dead = false; this.hp = this.maxHp; this.mp = 0; this.state = 'IDLE';
+            this.dead = false;
+            this.hp = this.maxHp;
+            this.mp = 0;
+            this.state = 'IDLE';
 
             if (this.isFirstSpawn) {
                 this.isFirstSpawn = false;
@@ -891,128 +1233,362 @@
                 this.lane = getBestLane(this.team);
             }
 
-            let spawnPos = getSpawnPoint(this.team, this.lane); this.x = spawnPos.x; this.y = spawnPos.y; this.target = null; this.waypoints = this.getWaypoints(this.team, this.lane); this.wpIndex = 0;
+            let spawnPos = getSpawnPoint(this.team, this.lane);
+            this.x = spawnPos.x;
+            this.y = spawnPos.y;
+            this.target = null;
+            this.waypoints = this.getWaypoints(this.team, this.lane);
+            this.wpIndex = 0;
             createVFX('ULT', this.x, this.y, '#fff');
-            if(this.uiBtn) { this.uiBtn.classList.remove('dead'); let txtSpan = this.uiBtn.querySelector('.hero-txt'); if(txtSpan) txtSpan.innerText = this.lane[0]; }
+            if (this.uiBtn) {
+                this.uiBtn.classList.remove('dead');
+                let txtSpan = this.uiBtn.querySelector('.hero-txt');
+                if (txtSpan) txtSpan.innerText = this.lane[0];
+            }
             this.sync3D();
         }
-        draw(ctx) {}
+
+        draw(ctx) {
+        }
     }
 
-    function findNearestTarget(me, range) { return findSmartTarget(me, range); } // Fallback
+    // 🔥 新增：地形障碍物类 (树木 & 岩石)
+    class Obstacle extends Entity {
+        constructor(x, y, type) {
+            // 半径：树稍微小点，石头大点
+            let r = type === 'TREE' ? 15 : 25;
+            super(x, y, 'NEUTRAL', r);
+            this.type = type;
+            this.physicsRadius = r; // 碰撞半径
+            this.createMesh();
+        }
 
-    function findAllTargets(me, range) { return [...entities, ...buildings].filter(e => e.team !== me.team && !e.dead && e.state !== 'RESPAWNING' && Math.hypot(e.x - me.x, e.y - me.y) <= range); }
-    function getBestLane(myTeam) { let counts = { 'TOP': 0, 'MID': 0, 'BOT': 0 }; entities.forEach(e => { if (!e.dead && e.state !== 'RESPAWNING' && e.lane) counts[e.lane]++; }); let best = 'MID'; if (counts.TOP > counts.MID && counts.TOP > counts.BOT) best = 'TOP'; else if (counts.BOT > counts.MID && counts.BOT > counts.TOP) best = 'BOT'; return best; }
-    function checkGameOver(loserTeam) { if (isGameOver) return; isGameOver = true; let title = document.getElementById('win-title'); document.getElementById('settlement').classList.add('show'); if (loserTeam === 'RED') { title.innerText = "BLUE WINS!"; title.style.color = COLORS.BLUE; } else { title.innerText = "RED WINS!"; title.style.color = COLORS.RED; } }
+        createMesh() {
+            this.mesh = new THREE.Group();
+
+            if (this.type === 'TREE') {
+                // 🌳 树干
+                const trunkGeo = new THREE.CylinderGeometry(4, 6, 15, 8);
+                const trunkMat = new THREE.MeshPhongMaterial({color: 0x8B4513}); // 棕色
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.y = 7.5;
+                trunk.castShadow = true;
+                trunk.receiveShadow = true;
+                this.mesh.add(trunk);
+
+                // 🌲 树冠 (低模风格：圆锥体)
+                const leavesGeo = new THREE.ConeGeometry(18, 35, 8);
+                const leavesMat = new THREE.MeshPhongMaterial({color: 0x228B22}); // 森林绿
+                const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+                leaves.position.y = 25; // 放在树干上面
+                leaves.castShadow = true;
+                leaves.receiveShadow = true;
+                this.mesh.add(leaves);
+
+            } else if (this.type === 'ROCK') {
+                // 🪨 石头 (低模风格：二十面体)
+                const geo = new THREE.IcosahedronGeometry(18, 0); // 细分度0=低模
+                const mat = new THREE.MeshPhongMaterial({color: 0x808080}); // 灰色
+                const rock = new THREE.Mesh(geo, mat);
+
+                // 随机旋转，让石头看起来不一样
+                rock.rotation.set(Math.random(), Math.random(), Math.random());
+                rock.scale.set(1.2, 0.8, 1.0); // 压扁一点
+                rock.position.y = 10;
+                rock.castShadow = true;
+                rock.receiveShadow = true;
+                this.mesh.add(rock);
+            }
+
+            this.mesh.position.set(this.x, 0, this.y);
+            scene.add(this.mesh);
+
+            // 调试用：显示碰撞圈
+            // this.createDebugVisuals(20);
+        }
+
+        update(dt) {
+            // 静态物体，不需要 update 逻辑
+        }
+    }
+
+    function findNearestTarget(me, range) {
+        return findSmartTarget(me, range);
+    } // Fallback
+
+    function findAllTargets(me, range) {
+        return [...entities, ...buildings].filter(e => e.team !== me.team && !e.dead && e.state !== 'RESPAWNING' && Math.hypot(e.x - me.x, e.y - me.y) <= range);
+    }
+
+    function getBestLane(myTeam) {
+        let counts = {'TOP': 0, 'MID': 0, 'BOT': 0};
+        entities.forEach(e => {
+            if (!e.dead && e.state !== 'RESPAWNING' && e.lane) counts[e.lane]++;
+        });
+        let best = 'MID';
+        if (counts.TOP > counts.MID && counts.TOP > counts.BOT) best = 'TOP'; else if (counts.BOT > counts.MID && counts.BOT > counts.TOP) best = 'BOT';
+        return best;
+    }
+
+    function checkGameOver(loserTeam) {
+        if (isGameOver) return;
+        isGameOver = true;
+        let title = document.getElementById('win-title');
+        document.getElementById('settlement').classList.add('show');
+        if (loserTeam === 'RED') {
+            title.innerText = "BLUE WINS!";
+            title.style.color = COLORS.BLUE;
+        } else {
+            title.innerText = "RED WINS!";
+            title.style.color = COLORS.RED;
+        }
+    }
 
     class Projectile {
         constructor(x, y, target, dmg, color) {
-            this.x = x; this.y = y; this.target = target; this.dmg = dmg; this.color = color; this.speed = 400; this.hit = false;
+            this.x = x;
+            this.y = y;
+            this.target = target;
+            this.dmg = dmg;
+            this.color = color;
+            this.speed = 400;
+            this.hit = false;
             this.createMesh();
         }
+
         createMesh() {
-            const geo = new THREE.SphereGeometry(4, 8, 8);
-            const mat = new THREE.MeshBasicMaterial({ color: getThreeColor(this.color) });
-            this.mesh = new THREE.Mesh(geo, mat);
+            // 🔥 尝试使用加载的模型
+            if (ASSETS.PROJECTILE) {
+                this.mesh = ASSETS.PROJECTILE.scene.clone();
+                // 修正缩放 (根据素材自行调整，通常子弹模型很大)
+                this.mesh.scale.set(3, 3, 3);
+
+                // 染色 (如果需要区分敌我子弹颜色)
+                const teamColor = this.target.team === 'RED' ? 0x44aaff : 0xff4444; // 这里的target是敌人，所以反过来取色
+                this.mesh.traverse(c => {
+                    if (c.isMesh) {
+                        c.material = c.material.clone();
+                        c.material.emissive.setHex(teamColor);
+                        c.material.emissiveIntensity = 0.5;
+                    }
+                });
+            } else {
+                // 回退：光球
+                const geo = new THREE.SphereGeometry(4, 8, 8);
+                const mat = new THREE.MeshBasicMaterial({color: getThreeColor(this.color)});
+                this.mesh = new THREE.Mesh(geo, mat);
+            }
+
+            // 初始位置
             this.mesh.position.set(this.x, 20, this.y);
-            this.debugMesh = new THREE.Mesh(new THREE.SphereGeometry(6, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true }));
-            this.debugMesh.visible = false;
-            scene.add(this.mesh); scene.add(this.debugMesh);
+            scene.add(this.mesh);
         }
+
         update(dt) {
-            if (this.hit) { if(this.mesh) this.dispose(); return; }
-            if (this.target.dead) { this.hit = true; this.dispose(); return; }
-            let dx = this.target.x - this.x; let dy = this.target.y - this.y; let dist = Math.hypot(dx, dy);
-            if (dist < 15) { this.hit = true; this.target.takeDamage(this.dmg, false); this.dispose(); }
-            else { let angle = Math.atan2(dy, dx); this.x += Math.cos(angle) * this.speed * dt; this.y += Math.sin(angle) * this.speed * dt; }
-            if(this.mesh) {
-                this.mesh.position.set(this.x, 20, this.y);
-                this.debugMesh.position.copy(this.mesh.position);
-                this.debugMesh.visible = DEBUG_MODE;
+            if (this.hit) {
+                if (this.mesh) this.dispose();
+                return;
+            }
+            if (this.target.dead) {
+                this.hit = true;
+                this.dispose();
+                return;
+            }
+
+            let dx = this.target.x - this.x;
+            let dy = this.target.y - this.y;
+            let dist = Math.hypot(dx, dy);
+
+            if (dist < 15) {
+                this.hit = true;
+                this.target.takeDamage(this.dmg, false);
+                this.dispose();
+            } else {
+                let angle = Math.atan2(dy, dx);
+                this.x += Math.cos(angle) * this.speed * dt;
+                this.y += Math.sin(angle) * this.speed * dt;
+
+                if (this.mesh) {
+                    this.mesh.position.set(this.x, 20, this.y);
+                    // 🔥 核心：让子弹模型朝向目标 (Rotation Y)
+                    // 注意：大部分 gltf 模型默认朝向是 +Z 或 +X，根据模型实际情况调整偏移
+                    // 这里假设模型朝向是 +Z，所以要减去 PI/2
+                    this.mesh.rotation.y = -angle + Math.PI / 2;
+                }
             }
         }
-        dispose() { if(this.mesh) { scene.remove(this.mesh); this.mesh = null; } if(this.debugMesh) { scene.remove(this.debugMesh); this.debugMesh = null; } }
-        draw(ctx) {}
+
+        dispose() {
+            if (this.mesh) {
+                scene.remove(this.mesh);
+                this.mesh = null;
+            }
+        }
+
+        draw(ctx) {
+        }
     }
 
     class Particle {
-        constructor(x, y, color, type='SMALL') {
-            this.x=x; this.y=y;
+        constructor(x, y, color, type = 'SMALL') {
+            this.x = x;
+            this.y = y;
             this.type = type;
             if (type === 'BURST') {
-                this.life = 0.5; this.vx=(Math.random()-0.5)*300; this.vy=(Math.random()-0.5)*300; this.vz=(Math.random())*200; this.createMesh(color, 6);
+                this.life = 0.5;
+                this.vx = (Math.random() - 0.5) * 300;
+                this.vy = (Math.random() - 0.5) * 300;
+                this.vz = (Math.random()) * 200;
+                this.createMesh(color, 6);
             } else if (type === 'RISE') {
-                this.life = 1.0; this.vx=(Math.random()-0.5)*50; this.vy=(Math.random()-0.5)*50; this.vz=100 + Math.random()*100; this.createMesh(color, 4);
+                this.life = 1.0;
+                this.vx = (Math.random() - 0.5) * 50;
+                this.vy = (Math.random() - 0.5) * 50;
+                this.vz = 100 + Math.random() * 100;
+                this.createMesh(color, 4);
             } else {
-                this.life = 0.3; this.vx=(Math.random()-0.5)*100; this.vy=(Math.random()-0.5)*100; this.vz=50; this.createMesh(color, 3);
+                this.life = 0.3;
+                this.vx = (Math.random() - 0.5) * 100;
+                this.vy = (Math.random() - 0.5) * 100;
+                this.vz = 50;
+                this.createMesh(color, 3);
             }
         }
+
         createMesh(color, size) {
             const geo = new THREE.BoxGeometry(size, size, size);
-            const mat = new THREE.MeshBasicMaterial({ color: getThreeColor(color) });
+            const mat = new THREE.MeshBasicMaterial({color: getThreeColor(color)});
             this.mesh = new THREE.Mesh(geo, mat);
             this.mesh.position.set(this.x, 5, this.y);
-            this.mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+            this.mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
             scene.add(this.mesh);
         }
+
         update(dt) {
-            this.x+=this.vx*dt; this.y+=this.vy*dt;
-            this.mesh.position.y += this.vz*dt;
-            if (this.type === 'BURST') this.vz -= 500*dt;
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.mesh.position.y += this.vz * dt;
+            if (this.type === 'BURST') this.vz -= 500 * dt;
             this.mesh.rotation.x += dt * 5;
-            this.life-=dt;
-            if(this.mesh) {
+            this.life -= dt;
+            if (this.mesh) {
                 this.mesh.position.set(this.x, this.mesh.position.y, this.y);
                 this.mesh.scale.setScalar(this.life * 2);
-                if(this.life <= 0) { scene.remove(this.mesh); this.mesh = null; }
+                if (this.life <= 0) {
+                    scene.remove(this.mesh);
+                    this.mesh = null;
+                }
             }
         }
-        draw(ctx) {}
+
+        draw(ctx) {
+        }
     }
 
     class ShockwaveRing {
         constructor(x, y, color) {
-            this.x=x; this.y=y; this.life=0.5; this.maxLife=0.5;
-            const geo = new THREE.RingGeometry(10, 20, 32); geo.rotateX(-Math.PI/2);
-            const mat = new THREE.MeshBasicMaterial({ color: getThreeColor(color), transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-            this.mesh = new THREE.Mesh(geo, mat); this.mesh.position.set(x, 2, y); scene.add(this.mesh);
+            this.x = x;
+            this.y = y;
+            this.life = 0.5;
+            this.maxLife = 0.5;
+            const geo = new THREE.RingGeometry(10, 20, 32);
+            geo.rotateX(-Math.PI / 2);
+            const mat = new THREE.MeshBasicMaterial({
+                color: getThreeColor(color),
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            this.mesh = new THREE.Mesh(geo, mat);
+            this.mesh.position.set(x, 2, y);
+            scene.add(this.mesh);
         }
+
         update(dt) {
-            this.life-=dt;
-            if(this.mesh) {
+            this.life -= dt;
+            if (this.mesh) {
                 let scale = 1 + (this.maxLife - this.life) * 15;
                 this.mesh.scale.set(scale, scale, scale);
                 this.mesh.material.opacity = this.life / this.maxLife;
-                if(this.life <= 0) { scene.remove(this.mesh); this.mesh = null; }
+                if (this.life <= 0) {
+                    scene.remove(this.mesh);
+                    this.mesh = null;
+                }
             }
         }
-        draw(ctx){}
+
+        draw(ctx) {
+        }
     }
 
     // 🔥 新增：Melee Slash VFX 类
+    // 🔥 升级版：真实刀光特效
     class MeleeSlash {
         constructor(x, y, angle) {
-            this.life = 0.2; this.maxLife = 0.2;
-            const geo = new THREE.PlaneGeometry(40, 40);
-            const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-            this.mesh = new THREE.Mesh(geo, mat);
-            let dist = 20;
+            this.life = 0.3;
+            this.maxLife = 0.3;
+
+            // 🔥 核心：用 RingGeometry (圆环) 截取一段来模拟刀光
+            // 参数：内半径，外半径，分段数，h段数，起始角度，圆环长度
+            const geometry = new THREE.RingGeometry(15, 25, 30, 1, Math.PI / 2, Math.PI);
+
+            // 材质：发光、透明、双面渲染
+            const material = new THREE.MeshBasicMaterial({
+                color: 0xffff00, // 刀光颜色 (黄色)
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.8,
+                depthWrite: false // 防止遮挡bug
+            });
+
+            this.mesh = new THREE.Mesh(geometry, material);
+
+            // 设置位置
+            let dist = 10;
             this.mesh.position.set(x + Math.cos(angle) * dist, 15, y + Math.sin(angle) * dist);
+
+            // 旋转：让圆环平躺，并指向攻击方向
             this.mesh.rotation.x = -Math.PI / 2;
-            this.mesh.rotation.z = -angle;
+            this.mesh.rotation.z = angle - Math.PI / 2; // 修正朝向
+
             scene.add(this.mesh);
         }
+
         update(dt) {
             this.life -= dt;
-            if(this.mesh) {
-                this.mesh.scale.x += dt * 5;
+            if (this.mesh) {
+                // 动效：旋转 + 放大 + 淡出
+                let progress = 1.0 - (this.life / this.maxLife);
+
+                // 甩刀动作 (旋转)
+                this.mesh.rotation.z -= dt * 5;
+
+                // 放大
+                let s = 1.0 + progress * 0.5;
+                this.mesh.scale.set(s, s, s);
+
+                // 淡出
                 this.mesh.material.opacity = this.life / this.maxLife;
-                if(this.life <= 0) { scene.remove(this.mesh); this.mesh = null; }
+
+                if (this.life <= 0) {
+                    scene.remove(this.mesh);
+                    // 记得释放内存
+                    this.mesh.geometry.dispose();
+                    this.mesh.material.dispose();
+                    this.mesh = null;
+                }
             }
         }
     }
 
-    function spawnMinions() { ['MID','TOP', 'BOT'].forEach(lane => { let bPos = getSpawnPoint('BLUE', lane); entities.push(new Unit(-1, bPos.x, bPos.y, 'BLUE', 'MINION', lane)); let rPos = getSpawnPoint('RED', lane); entities.push(new Unit(-1, rPos.x, rPos.y, 'RED', 'MINION', lane)); }); }
+    function spawnMinions() {
+        ['MID', 'TOP', 'BOT'].forEach(lane => {
+            let bPos = getSpawnPoint('BLUE', lane);
+            entities.push(new Unit(-1, bPos.x, bPos.y, 'BLUE', 'MINION', lane));
+            let rPos = getSpawnPoint('RED', lane);
+            entities.push(new Unit(-1, rPos.x, rPos.y, 'RED', 'MINION', lane));
+        });
+    }
 
     function initUI() {
         const dock = document.getElementById('hero-dock');
@@ -1057,36 +1633,92 @@
             }
         });
 
-        let bBase = buildings.find(b=>b.type==='BASE'&&b.team==='BLUE');
-        let rBase = buildings.find(b=>b.type==='BASE'&&b.team==='RED');
-        if(bBase) document.getElementById('hp-blue').innerText = Math.floor(bBase.hp);
-        if(rBase) document.getElementById('hp-red').innerText = Math.floor(rBase.hp);
+        let bBase = buildings.find(b => b.type === 'BASE' && b.team === 'BLUE');
+        let rBase = buildings.find(b => b.type === 'BASE' && b.team === 'RED');
+        if (bBase) document.getElementById('hp-blue').innerText = Math.floor(bBase.hp);
+        if (rBase) document.getElementById('hp-red').innerText = Math.floor(rBase.hp);
+    }
+
+    // 🔥 生成地形 (野区)
+    function generateTerrain() {
+        // 1. 绘制河流 (Visual Only)
+        // 在地图中心画一条对角线蓝色带子
+        const riverGeo = new THREE.PlaneGeometry(Math.max(width, height) * 2, 80);
+        const riverMat = new THREE.MeshPhongMaterial({
+            color: 0x44aaff,
+            transparent: true,
+            opacity: 0.6,
+            shininess: 80
+        });
+        const river = new THREE.Mesh(riverGeo, riverMat);
+        river.rotation.x = -Math.PI / 2; // 平躺
+        river.rotation.z = -Math.PI / 4; // 45度角穿过地图
+        river.position.set(width / 2, 1, height / 2); // 稍微高出地面一点点
+        scene.add(river);
+
+        // 2. 生成野区障碍物 (避开兵线)
+        // 简单的算法：随机撒点，如果在兵线附近就丢弃
+        const numObstacles = 10; // 树和石头的数量
+
+        for (let i = 0; i < numObstacles; i++) {
+            let tx = Math.random() * width;
+            let ty = Math.random() * height;
+
+            // 🛡️ 避让逻辑：不要把树种在路上或基地里
+            // 距离基地的距离
+            let distBlue = Math.hypot(tx - MAP.BLUE_BASE.x, ty - MAP.BLUE_BASE.y);
+            let distRed = Math.hypot(tx - MAP.RED_BASE.x, ty - MAP.RED_BASE.y);
+            if (distBlue < 200 || distRed < 200) continue;
+
+            // 距离中线的距离 (y = x)
+            // 点到直线距离公式简化版 (因为是45度线)
+            let distMid = Math.abs(tx - ty) / Math.sqrt(2);
+            if (distMid < 80) continue; // 中路留宽一点
+
+            // 距离上路 (折线) 和 下路 (折线) 的简单避让
+            // 简单判定：如果在地图边缘 (上边和右边是上路区，左边和下边是下路区)
+            // 我们只在中间的空档区域种树
+            // 定义两个“野区中心”：
+            // 野区1 (左上)：x < W/2, y < H/2
+            // 野区2 (右下)：x > W/2, y > H/2
+
+            // 这里简化：只要离地图边缘 > 100 且离中线远，就可以种
+            if (tx < 50 || tx > width - 50 || ty < 50 || ty > height - 50) continue;
+
+            let type = Math.random() > 0.3 ? 'TREE' : 'ROCK';
+            obstacles.push(new Obstacle(tx, ty, type));
+        }
     }
 
     function initGame() {
-        width = window.innerWidth; height = window.innerHeight;
-        MAP.BLUE_BASE = { x: 100, y: height - 100 }; MAP.RED_BASE = { x: width - 100, y: 100 }; MAP.LANES = { TOP_LEFT: { x: 100, y: 100 }, BOT_RIGHT: { x: width - 100, y: height - 100 } };
+        width = window.innerWidth;
+        height = window.innerHeight;
+        MAP.BLUE_BASE = {x: 100, y: height - 100};
+        MAP.RED_BASE = {x: width - 100, y: 100};
+        MAP.LANES = {TOP_LEFT: {x: 100, y: 100}, BOT_RIGHT: {x: width - 100, y: height - 100}};
 
         init3D();
+        // 🔥 在这里调用地形生成
+        // generateTerrain();
 
         buildings.push(new Building(MAP.BLUE_BASE.x, MAP.BLUE_BASE.y, 'BLUE', 'BASE', 'ALL'));
         buildings.push(new Building(MAP.RED_BASE.x, MAP.RED_BASE.y, 'RED', 'BASE', 'ALL'));
 
-        let midX = (MAP.BLUE_BASE.x+MAP.RED_BASE.x)/2, midY = (MAP.BLUE_BASE.y+MAP.RED_BASE.y)/2;
-        buildings.push(new Building(midX-160, midY+160, 'BLUE', 'TOWER', 'MID'));
-        buildings.push(new Building(midX+160, midY-160, 'RED', 'TOWER', 'MID'));
+        let midX = (MAP.BLUE_BASE.x + MAP.RED_BASE.x) / 2, midY = (MAP.BLUE_BASE.y + MAP.RED_BASE.y) / 2;
+        buildings.push(new Building(midX - 160, midY + 160, 'BLUE', 'TOWER', 'MID'));
+        buildings.push(new Building(midX + 160, midY - 160, 'RED', 'TOWER', 'MID'));
 
         buildings.push(new Building(50, 350, 'BLUE', 'TOWER', 'TOP'));
         buildings.push(new Building(450, 50, 'RED', 'TOWER', 'TOP'));
 
-        buildings.push(new Building(width-350, height-50, 'BLUE', 'TOWER', 'BOT'));
-        buildings.push(new Building(width-50, height-450, 'RED', 'TOWER', 'BOT'));
+        buildings.push(new Building(width - 350, height - 50, 'BLUE', 'TOWER', 'BOT'));
+        buildings.push(new Building(width - 50, height - 450, 'RED', 'TOWER', 'BOT'));
 
         // 🔥 1. 先刷小兵
         spawnMinions();
 
         // 🔥 2. 后刷英雄 (带延迟)
-        let lanes = ['MID','TOP','TOP','BOT','BOT'];
+        let lanes = ['MID', 'TOP', 'TOP', 'BOT', 'BOT'];
         let uid = 0;
         lanes.forEach((l, index) => {
             let bPos = getSpawnPoint('BLUE', l);
@@ -1105,17 +1737,47 @@
         initUI();
         requestAnimationFrame(loop);
     }
-    function loop(timestamp) { let rawDt = (timestamp - lastTime)/1000; lastTime = timestamp; if(rawDt > 0.1 || isNaN(rawDt)) rawDt = 0.016; let dt = IS_PAUSED ? 0 : rawDt * TIME_SCALE; if (!isGameOver) { if (!IS_PAUSED) { waveTimer -= dt; if(waveTimer <= 0) { spawnMinions(); waveTimer = SPAWN_INTERVAL; } document.getElementById('wave-timer').innerText = waveTimer.toFixed(1); resolveCollisions(); resolveCollisions(); }
-        [...entities, ...buildings, ...projectiles, ...particles].forEach(e => e.update(dt));
-        if (!IS_PAUSED) {
-            entities = entities.filter(e => e.type === 'HERO' || !e.dead);
-            buildings = buildings.filter(b => !b.dead);
-            projectiles = projectiles.filter(p => !p.hit);
-            particles = particles.filter(p => p.life > 0);
-            updateUI();
+
+    function loop(timestamp) {
+        let rawDt = (timestamp - lastTime) / 1000;
+        lastTime = timestamp;
+        if (rawDt > 0.1 || isNaN(rawDt)) rawDt = 0.016;
+        let dt = IS_PAUSED ? 0 : rawDt * TIME_SCALE;
+        if (!isGameOver) {
+            if (!IS_PAUSED) {
+                waveTimer -= dt;
+                if (waveTimer <= 0) {
+                    spawnMinions();
+                    waveTimer = SPAWN_INTERVAL;
+                }
+                document.getElementById('wave-timer').innerText = waveTimer.toFixed(1);
+                resolveCollisions();
+                resolveCollisions();
+            }
+            [...entities, ...buildings, ...projectiles, ...particles].forEach(e => e.update(dt));
+            if (!IS_PAUSED) {
+                entities = entities.filter(e => e.type === 'HERO' || !e.dead);
+                buildings = buildings.filter(b => !b.dead);
+                projectiles = projectiles.filter(p => !p.hit);
+                particles = particles.filter(p => p.life > 0);
+                updateUI();
+            }
         }
-    } renderer.render(scene, camera); requestAnimationFrame(loop); }
-    window.onresize = () => { width = window.innerWidth; height = window.innerHeight; let centerX = width/2, centerZ = height/2; let scale = Math.max(width, height) / 700; camera.aspect = width / height; camera.updateProjectionMatrix(); camera.position.set(centerX - 200 * scale, 450 * scale, centerZ + 600 * scale); camera.lookAt(centerX, 0, centerZ); renderer.setSize(width, height); };
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+    }
+
+    window.onresize = () => {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        let centerX = width / 2, centerZ = height / 2;
+        let scale = Math.max(width, height) / 700;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        camera.position.set(centerX - 200 * scale, 450 * scale, centerZ + 600 * scale);
+        camera.lookAt(centerX, 0, centerZ);
+        renderer.setSize(width, height);
+    };
 
     // 🔥 等待资源加载完成后再启动游戏
     loadResources().then(() => {
